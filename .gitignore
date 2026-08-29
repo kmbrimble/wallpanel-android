@@ -46,3 +46,7 @@ keystore.gradle
 
 # Build and copy
 build-and-copy.ps1
+release-out/
+*.ab
+*.jks
+.fuse_hidden*
