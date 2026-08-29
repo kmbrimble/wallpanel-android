@@ -23,6 +23,7 @@ fabric.properties
 
 # Log/OS Files
 *.log
+logs/
 
 # Android Studio generated files and folders
 captures/
