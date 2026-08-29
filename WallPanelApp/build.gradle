@@ -68,7 +68,7 @@ android {
         applicationId "xyz.wallpanel.app"
         minSdkVersion 19
         targetSdk 34
-        versionCode versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild
+        versionCode versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild + 1
         versionName "${versionMajor}.${versionMinor}.${versionPatch}.${versionBuild}"
         multiDexEnabled true
         vectorDrawables.useSupportLibrary = true
@@ -124,7 +124,8 @@ android {
             dimension "default"
             buildConfigField "String", BASE_ENVIRONMENT, '"PROD_ENVIRONMENT"'
             applicationId "xyz.wallpanel.app"
-            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}"
+            applicationIdSuffix ".kmb"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.1"
             buildConfigField 'Integer', 'CODE', '1234'
             buildConfigField 'String', 'HASS_URL', '""'
             buildConfigField 'String', 'BROKER', '""'

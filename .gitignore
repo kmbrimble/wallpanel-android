@@ -8,6 +8,7 @@ render.experimental.xml
 # Gradle
 .gradle/
 build/
+release-out/
 
 # Local configuration file (sdk path, etc)
 local.properties
