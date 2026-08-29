@@ -70,6 +70,23 @@ Still ask first for anything destructive or history-rewriting (force-push,
 reset --hard, rebase, branch deletion) and for tags/GitHub releases tied to a
 signed APK release, since those are harder to unwind.
 
+## Delegation
+
+- **advisor (Fable)** is consulted for: the plan, before implementation begins,
+  on any feature touching more than one file; any decision about concurrency,
+  lifecycle, teardown or threading; anything touching credentials, network
+  config or permissions; any judgement call where two reasonable approaches
+  exist; and a review of the diff before the feature is declared done.
+- advisor is **not** consulted for: naming, formatting, mechanical edits, or
+  anything where there is one obvious answer. Over-consulting wastes time and
+  dilutes the signal.
+- **repository-reader (Haiku)** handles all exploratory and high-volume
+  reading: locating code, enumerating call sites, reading diffs, scanning
+  dependencies. Do not read large files directly when repository-reader can
+  summarise them.
+- When advisor's recommendation is not followed, say so and why in the
+  handback.
+
 ## Deploy and verify
 
 After a signed prod release APK is built and verified (`apksigner verify`),
