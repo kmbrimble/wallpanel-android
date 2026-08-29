@@ -61,6 +61,15 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 release page, CI artifact, or third party, even from `upstream` — build from
 source we've reviewed and sign with our own key.
 
+## Git workflow
+
+Commit and push to `origin master` automatically once a change is complete
+and verified (build succeeds / tests pass as applicable) — do not stop to ask
+for confirmation first. This applies to normal working commits on this repo.
+Still ask first for anything destructive or history-rewriting (force-push,
+reset --hard, rebase, branch deletion) and for tags/GitHub releases tied to a
+signed APK release, since those are harder to unwind.
+
 ## Deploy and verify
 
 After a signed prod release APK is built and verified (`apksigner verify`),
