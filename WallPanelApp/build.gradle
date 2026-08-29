@@ -62,7 +62,11 @@ android {
     }
     compileSdk 34
     lint {
-        checkReleaseBuilds = false
+        // Gate release builds on lintVital, which only checks Fatal-severity issues
+        // (broken manifests, missing resources, invalid references) by design — not the
+        // hundreds of pre-existing deprecation warnings we're deliberately not fixing yet.
+        abortOnError = true
+        checkReleaseBuilds = true
     }
     defaultConfig {
         applicationId "xyz.wallpanel.app"
@@ -83,6 +87,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Distinct from both installed apps (xyz.wallpanel.app, xyz.wallpanel.app.kmb)
+            // so debug/test builds never touch the production panel or the rollback build.
+            applicationIdSuffix ".dev"
+        }
         release {
             minifyEnabled false
             shrinkResources false
@@ -262,4 +271,6 @@ if (file('google-services.json').exists()) {
 }*/
 
 // Disable lint tasks when building on JDK 25+ (lint worker fails with "25.0.2" javacOptions bug)
-tasks.configureEach { t -> if (t.name.startsWith('lint')) t.enabled = false }
+if (JavaVersion.current() >= JavaVersion.VERSION_25) {
+    tasks.configureEach { t -> if (t.name.startsWith('lint')) t.enabled = false }
+}
