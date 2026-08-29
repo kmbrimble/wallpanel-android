@@ -140,6 +140,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var isServiceDestroyed = false
 
     override fun onCreate() {
         super.onCreate()
@@ -190,6 +191,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
     }
 
     private fun runDeferredInit() {
+        if (isServiceDestroyed) return
         configureMqtt()
         configurePowerOptions()
         configureCamera()
@@ -201,6 +203,8 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        isServiceDestroyed = true
+        mainHandler.removeCallbacksAndMessages(null)
         mqttModule?.let {
             it.pause()
             mqttModule = null

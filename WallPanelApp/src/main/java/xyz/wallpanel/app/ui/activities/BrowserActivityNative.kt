@@ -305,7 +305,11 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
         }
         parent.addView(newWebView)
         webView = newWebView
-        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        if (configuration.hardwareAccelerated) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        } else {
+            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
         configureWebChromeClient()
         configureWebViewClient()
         webView.setOnTouchListener { v, event ->
