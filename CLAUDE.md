@@ -60,3 +60,25 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 **We build and sign our own APKs.** Never install a prebuilt APK/AAB from a
 release page, CI artifact, or third party, even from `upstream` — build from
 source we've reviewed and sign with our own key.
+
+## Deploy and verify
+
+After a signed prod release APK is built and verified (`apksigner verify`),
+install it on the wall tablet automatically as the default last step of the
+release flow — do not wait to be asked, and do not just hand back the APK
+path:
+
+```
+adb -s 192.168.0.52:5555 install -d <signed-apk-path>
+```
+
+- The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
+  `adb connect 192.168.0.52:5555` first if it isn't already listed in
+  `adb devices`).
+- `-d` allows a version/signature downgrade install; harmless to include even
+  when not strictly needed.
+- Skip the auto-install only when there's an explicit reason not to: the user
+  says not to install, the applicationId/signature would silently replace an
+  app they didn't ask to replace, the tablet isn't reachable, or the release
+  is explicitly a dry run / hold. In those cases, say so and hand back the
+  APK path instead.
