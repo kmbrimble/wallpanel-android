@@ -76,11 +76,25 @@ while true; do
     sleep 30
     continue
   fi
+  # Retention, run each time round the loop: cheap enough to not need cron, and
+  # the loop is the only thing guaranteed to be alive whenever logs are growing.
+  find "$LOGDIR" -maxdepth 1 -name 'wallpanel-*.log' -type f -mtime +7 -delete 2>/dev/null
+
   STAMP=$(date +%Y%m%d-%H%M%S)
+  # Silence known per-frame noise only -- deliberately no `*:S` catch-all, so an
+  # unexpected tag still lands in the log. The MediaTek camera HAL logs across a
+  # dozen tags per frame; those dominate the volume and say nothing about how the
+  # panel behaves. Tag names must match exactly or the filter silently does
+  # nothing: the trailing colon in threadtime output is the format's delimiter and
+  # the padding is to 8 characters, neither is part of the tag.
   adb -s "$DEV" logcat -b crash,main,system -v threadtime \
     Camera3-OutputStream:S BufferQueueProducer:S BufferQueueDebug:S \
     UserExperience:S AppOps:S ProcessStats:S SurfaceFlinger:S \
     GoogleInputMethodService:S DropBoxManagerService:S \
+    AeAlgo:S GPUIMAGEROTATE:S S_Bokeh:S ifunc_cam_dmax:S cam_dfs:S \
+    MtkCam/TPI_S_FB:S GPUAUX:S NormalPipe:S LMVDrv:S Hal3ARaw:S \
+    MtkCam/fdNodeImp:S tsf_core:S CompositionEngine:S libPerfCtl:S \
+    hwcomposer:S \
     >> "$LOGDIR/wallpanel-$STAMP.log" 2>> "$LOGDIR/capture-supervisor.log" &
   LOGCAT_PID=$!
   wait "$LOGCAT_PID"

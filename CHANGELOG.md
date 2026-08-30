@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### 2026-08-30 — Cut logcat volume at source, and add retention
+
+The capture was writing ~250MB/h, almost all of it MediaTek camera HAL chatter. The tag
+filters only silenced `Camera3-OutputStream`, but the HAL logs across a dozen tags per
+frame.
+
+Silenced 15 more tags: `AeAlgo`, `GPUIMAGEROTATE`, `S_Bokeh`, `ifunc_cam_dmax`, `cam_dfs`,
+`MtkCam/TPI_S_FB`, `GPUAUX`, `NormalPipe`, `LMVDrv`, `Hal3ARaw`, `MtkCam/fdNodeImp`,
+`tsf_core`, `CompositionEngine`, `libPerfCtl`, `hwcomposer`. Deliberately **no `*:S`
+catch-all** — the point is silencing known noise while still capturing unexpected tags.
+The crash buffer and `adbd` are untouched.
+
+Tag names have to match exactly or the filter silently does nothing, so they were taken
+from a histogram of real capture and confirmed against it afterwards: in `threadtime`
+output the trailing colon is the format's delimiter and tags are padded to 8 characters —
+neither is part of the tag. Re-running the histogram after the change shows all 15 gone,
+with `adbd`, `BatteryService`, `WindowManager`, `crashpad`, `AndroidRuntime` and the rest
+still captured.
+
+Retention: the supervisor loop now deletes `logs/wallpanel-*.log` older than 7 days each
+time round. No cron needed — the loop is the only thing guaranteed to be alive whenever
+logs are growing. Verified in a scratch directory that it removes only aged
+`wallpanel-*.log` files and leaves `capture-supervisor.log` and recent captures alone.
+
+**Measured, not estimated** — both windows over 16+ minutes of steady-state capture:
+
+| | write rate |
+|---|---|
+| before | 241.5 MB/h (16.1 min) |
+| after | 6.39 MB/h (16.8 min) |
+
+A 97.4% reduction, ~38x. Daily volume goes from ~5.8GB to ~150MB, so the 7-day retention
+window costs about 1GB rather than 40GB.
+
 ### 2026-08-30 — Make the logcat capture idempotent and self-restarting
 
 The continuous capture had died twice in one day for the same reason: it runs as a plain
