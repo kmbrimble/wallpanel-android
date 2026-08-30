@@ -51,6 +51,18 @@ hypothesis that capture rate drives the renderer memory pressure is not supporte
 Also noted: `setting_camera_processinginterval` (default 500ms) is defined in resources
 but read by no Kotlin code — a dead preference, left alone as out of scope.
 
+**NOT PROMOTED.** `scripts/smoke-device.sh` PASSes. `scripts/smoke-renderer-crash.sh`
+FAILs at cycle 1 with "no renderer process found" — but it fails **identically on
+unmodified master** with the same device state, so it is not caused by this change (a
+camera-only diff cannot affect WebView renderer processes). The dev app never spawns a
+`SandboxedProcessService1` renderer: with `settings_screensaver=true` the debug build
+shows its forced *clock* screensaver (screenshot confirmed), and `settings_screensaver`
+is the same key as `hasClockScreenSaver`; switching to `pref_web_screensaver=true` still
+produced no renderer. The device config the previous session's green run relied on was
+lost when this session ran `pm clear` on the dev app, and it has not been reconstructed.
+Per CLAUDE.md ("If either script fails, do not promote"), the branch is pushed and master
+is untouched.
+
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
 Plan:
