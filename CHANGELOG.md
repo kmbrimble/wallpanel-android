@@ -73,11 +73,32 @@ built on firebase-components. Neither is Firebase itself.
   count and renderer history between the two samples, so it should not be quoted as a
   clean −14.8MB win.
 
-  **Incidental finding worth more than this change**: the live panel is currently
-  holding **225.9MB of GL mtrack** — GPU memory, in one process. That is the dominant
-  term in the panel's footprint by a wide margin and it is WebView/graphics, not
-  providers, not Firebase, and not camera capture rate. Any further memory work should
-  start there.
+  **The memory hypothesis for this change is disproven.** Init providers were the
+  named suspect for the panel's footprint after camera capture rate was ruled out in
+  kmb.3. They are now ruled out too: removing `FirebaseInitProvider` shrank the APK
+  and the provider list and did nothing for memory. Both hypotheses are recorded as
+  tested-and-rejected in `CLAUDE.md` so neither gets retested.
+
+  **The dominant term is GL mtrack — GPU memory for WebView compositing — measured at
+  225.9MB in a single process**, against 43.3MB of code and 31.8MB of Java heap. That
+  is where the panel's footprint actually lives, and where any further memory work
+  should start. This change was still worth making on the grounds it was actually
+  argued on: Firebase init code no longer runs on every launch on a device holding
+  Home Assistant credentials. It was never going to be a memory fix.
+
+### 2026-08-30 — Known gap: the smoke scripts do not detect a hung app
+
+Recorded, not fixed. Neither `smoke-device.sh` nor `smoke-renderer-crash.sh`
+distinguishes a working panel from a functionally hung one. Both assert process
+liveness, window focus, and a bound renderer — and all three were true while the panel
+displayed a dead Home Assistant loading screen: the app process was alive and GCing
+every few seconds, focus was held, and renderer 24949 stayed bound from 19:44:48 until
+it was force-stopped at 19:46:49. `smoke-renderer-crash.sh` passed on that exact build
+minutes earlier.
+
+Deliberately left open. The undecided question is what a liveness check should assert —
+page-load completion, a DOM probe, the MQTT heartbeat — and building one before that is
+settled would just add a second check that passes on a dead screen.
 
 ### 2026-08-30 — Cut logcat volume at source, and add retention
 

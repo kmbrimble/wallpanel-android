@@ -61,6 +61,41 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 release page, CI artifact, or third party, even from `upstream` — build from
 source we've reviewed and sign with our own key.
 
+## Memory footprint — hypotheses already tested and rejected
+
+The production app's working set is large (measured 227–450MB TOTAL PSS depending
+on graphics state). Two explanations have been tested on the device and **both are
+rejected — do not retest them**:
+
+- **Camera capture rate** (kmb.3, Aug 2026). Reducing the capture rate at the sensor
+  did not move the footprint.
+- **Init providers / Firebase** (kmb.4, Aug 2026). `FirebaseInitProvider` was a real
+  and worth-removing defect — Firebase init ran on every launch with no
+  `google-services.json` — but removing it did not reduce memory. The APK shrank
+  461KB and the provider disappeared; PSS did not improve.
+
+**The dominant term is GL mtrack — GPU memory for WebView compositing — measured at
+~226MB in a single process**, against ~43MB of code and ~31MB of Java heap. Any
+future memory work starts there, not at providers, dependencies or camera settings.
+`dumpsys meminfo <pkg>` reports it under `GL mtrack` and in the `Graphics` summary
+row.
+
+Note that PSS comparisons across processes are easily invalidated by differing
+WebView count and renderer-crash history — both shift GL mtrack by hundreds of MB.
+Compare only samples with the same WebView count and similar uptime, and say so.
+
+## Known gap — the smoke scripts do not detect a hung app
+
+Neither `smoke-device.sh` nor `smoke-renderer-crash.sh` can tell a working panel from
+a functionally hung one. Both assert process liveness, window focus, and a bound
+renderer. On 2026-08-30 all three were true while the panel sat on a dead Home
+Assistant loading screen: the app process was alive and GCing, focus was held, and
+renderer 24949 was bound the entire time.
+
+This is a real coverage gap, deliberately **left open** — the open question is what a
+liveness check should actually assert (page-load completion? a DOM probe? the MQTT
+heartbeat?), and that has not been decided. Do not build one until it is.
+
 ## Git workflow
 
 Commit and push to `origin master` automatically once a change is complete
