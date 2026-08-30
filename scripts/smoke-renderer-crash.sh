@@ -69,6 +69,7 @@ INSTALLED=0
 PASSED=0
 RESTORE_APK=""
 SERIAL=""
+PREV_STAYON=""
 
 log() { echo "[renderer-smoke] $*" >&2; }
 fail_reason() { FAILURES+=("$1"); log "FAIL: $1"; }
@@ -91,6 +92,10 @@ launch_and_check() {
 # Restores the panel unless the run passed. Registered only after a successful
 # candidate install, so a preflight refusal can never "restore" over nothing.
 restore_panel() {
+    # Put the display timeout back however we found it, pass or fail.
+    if [[ -n "$PREV_STAYON" ]]; then
+        timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell settings put global stay_on_while_plugged_in "$PREV_STAYON" >/dev/null 2>&1
+    fi
     [[ "$INSTALLED" -eq 1 && "$PASSED" -eq 0 ]] || return 0
     log "Restoring the previous release: $(basename "$RESTORE_APK")"
     if ! timeout 300 adb -s "$SERIAL" install -r -d "$RESTORE_APK" >/dev/null 2>&1; then
@@ -187,6 +192,17 @@ fi
 log "Signature matches the installed app ($CANDIDATE_SIG)"
 
 # --- install the candidate ---------------------------------------------------
+
+# Chromium won't activate a renderer's service bindings for an app that isn't
+# visible, so a display that sleeps during the idle wait makes the renderer
+# vanish and the test unrunnable. Hold the display on for the duration and put
+# the setting back on exit. This does not weaken the idle wait: it injects no
+# input, so the app's inactivity timer still fires and the screensaver still
+# mounts.
+PREV_STAYON=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')
+[[ "$PREV_STAYON" =~ ^[0-9]+$ ]] || PREV_STAYON=""
+timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell svc power stayon true >/dev/null 2>&1
+timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1
 
 log "Installing the candidate over $APP_ID"
 if ! timeout 300 adb -s "$SERIAL" install -r "$CANDIDATE" >/dev/null 2>&1; then

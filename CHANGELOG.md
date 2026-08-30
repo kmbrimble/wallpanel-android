@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### 2026-08-30 — Run the renderer-crash test against the production app
+
+`scripts/smoke-renderer-crash.sh` now takes a signed production APK, installs it over
+`xyz.wallpanel.app.kmb` and runs its crash cycles there, instead of against the `.dev` ID.
+`scripts/smoke-device.sh` is unchanged — it works fine on `.dev`.
+
+Why: the dev app cannot obtain a WebView renderer on this tablet. It requests
+`SandboxedProcessService1`, whose ServiceRecord never gets a bound process, while
+production gets `SandboxedProcessService0` and works normally. The cause is unexplained
+and deliberately closed — it affects only the harness, never the shipping app. Testing
+the signed production artifact is better evidence anyway: it's exactly what ships, on
+exactly the config it ships onto.
+
+Safety, all checked before the device is touched — each refuses outright:
+- the candidate must carry the production applicationId (blocks ever pointing it at a
+  debug build);
+- it must be signed with the same key as the app already installed, compared digest to
+  digest against the restore APK rather than a hardcoded value — that's the exact
+  predicate for both the install and the rollback being accepted;
+- a `release-out/` APK must match the installed versionCode, selected by reading each
+  APK's badging rather than munging the filename (versionNames contain spaces, filenames
+  use dashes). No match means no way back, so the script refuses to run;
+- a downgrade is refused with our own message rather than adb's.
+
+Restore is an EXIT trap gated on an `INSTALLED` flag, so it covers a mid-run death or
+interrupt — not just a graceful FAIL — while a preflight refusal can never "restore" over
+something that was never installed. On PASS the candidate is left installed and the panel
+confirmed foregrounded *with a bound renderer*, since window focus alone can't distinguish
+a live dashboard from a dead WebView.
+
+The script also holds the display on for the duration (`svc power stayon`, original value
+restored on exit) and wakes it after install. Without this the test cannot run at all:
+Chromium does not activate renderer service bindings for an app that isn't visible, so the
+display sleeping during the 35s idle wait made the renderer vanish and produced a spurious
+"no renderer process found" failure on the first real run. This does not weaken the idle
+wait — it injects no input, so the app's inactivity timer still fires and the screensaver
+still mounts.
+
+**Result on master (0.12.0 Build 0-kmb.2, versionCode 12002): PASS, 4/4 cycles.** The app
+process was unchanged across every renderer kill, window focus held, and a fresh renderer
+appeared each time. The screensaver renderer-crash fix does hold on production. The
+restore path was also exercised for real by the earlier spurious failure: it reinstalled
+the previous release and confirmed it foregrounded.
+
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
 Plan:
