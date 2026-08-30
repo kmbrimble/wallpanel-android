@@ -11,7 +11,10 @@
 # if the device is unreachable.
 set -uo pipefail
 
-SERIAL="${SMOKE_SERIAL:-192.168.0.52:5555}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./adb-device.sh
+source "$SCRIPT_DIR/adb-device.sh"
+
 DEV_APP_ID="xyz.wallpanel.app.kmb.dev"
 SERVICE_CLASS="xyz.wallpanel.app.network.WallPanelService"
 BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-/root/.android-sdk/build-tools/34.0.0}"
@@ -50,10 +53,20 @@ APK="${1:-}"
 [[ -x "$AAPT2" ]] || die "aapt2 not found or not executable at $AAPT2"
 
 # --- device reachability: fail closed, never hang ---
-log "Connecting to $SERIAL"
-timeout "$ADB_TIMEOUT" adb connect "$SERIAL" >/dev/null 2>&1
-STATE=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' || true)
-[[ "$STATE" == "device" ]] || die "device $SERIAL unreachable (get-state='$STATE')"
+# SMOKE_SERIAL is a raw serial override (used to test the unreachable-device
+# path deterministically); anything else goes through the resilient resolver,
+# which falls back to mdns discovery + re-pinning port 5555 if the tablet
+# rebooted and lost its tcpip pin.
+if [[ -n "${SMOKE_SERIAL:-}" ]]; then
+    SERIAL="$SMOKE_SERIAL"
+    log "Connecting to $SERIAL"
+    timeout "$ADB_TIMEOUT" adb connect "$SERIAL" >/dev/null 2>&1
+    STATE=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' || true)
+    [[ "$STATE" == "device" ]] || die "device $SERIAL unreachable (get-state='$STATE')"
+else
+    SERIAL=$(wallpanel_resolve_adb_serial) || die "could not reach the tablet at $WALLPANEL_TABLET_IP (pinned port and mdns discovery both failed -- see [adb-device] messages above)"
+    log "Connected to $SERIAL"
+fi
 
 # --- parse applicationId from the APK itself, never trust the filename ---
 BADGING=$("$AAPT2" dump badging "$APK" 2>/dev/null) || die "aapt2 dump badging failed for $APK"

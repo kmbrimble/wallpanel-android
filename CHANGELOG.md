@@ -226,3 +226,37 @@ Result:
 - Whether the *previously installed* production build was already exposed to
   this bug depends on its own screensaver setting (REVIEW.md's still-open
   question) — this release fixes it either way, going forward.
+
+### 2026-08-30 — Resilient tablet address for logcat-capture.sh, smoke-device.sh, smoke-renderer-crash.sh
+
+All three scripts hardcoded `192.168.0.52:5555`, which breaks whenever the tablet
+reboots: Android 11+ wireless debugging assigns a random port on each boot, so the
+`adb tcpip 5555` pin used to reach it over the LAN is lost.
+
+- Added `scripts/adb-device.sh`, a sourced (not executed) helper exposing
+  `wallpanel_resolve_adb_serial`: tries the pinned `<ip>:5555` first, and if
+  unreachable, discovers the tablet's current port via `adb mdns services`,
+  connects to it, re-pins port 5555 (`adb tcpip 5555`) so the fast path works
+  again next time, and reconnects to `<ip>:5555`. Fails with a clear message on
+  stderr and a non-zero return — never falls through to a false success — if
+  neither the pin nor mdns discovery works.
+- The tablet's IP is read from `$WALLPANEL_TABLET_IP` (default `192.168.0.52`),
+  not hardcoded.
+- `smoke-device.sh` / `smoke-renderer-crash.sh`: `SMOKE_SERIAL` still works as a
+  raw serial override that bypasses the resolver entirely, preserving the
+  existing fast (~3s) deterministic device-unreachable test path unchanged.
+  Verified: that FAIL path still completes in ~3s: `SMOKE_SERIAL=192.168.0.99:5555
+  bash scripts/smoke-device.sh <apk>`; a real run with no override resolves via
+  the fast path (`[smoke] Connected to 192.168.0.52:5555`) and both scripts still
+  PASS end-to-end.
+- `logcat-capture.sh`: resolves the serial fresh on every retry-loop iteration
+  (source, not one-shot), so a mid-capture tablet reboot is recovered from
+  automatically on the next 30s retry rather than looping forever against a dead
+  port.
+- Verified the fallback path's failure mode directly (pointed the resolver at a
+  nonexistent IP): logs the pinned-port failure, runs mdns discovery, and fails
+  closed with a clear diagnostic when mdns finds nothing — this container's
+  network did not receive any mdns services in testing (multicast is often
+  blocked across Docker network bridges), so the mdns discovery path itself is
+  implemented and fails closed as specified, but wasn't exercised against a real
+  port change (would require actually rebooting the tablet, which wasn't done).

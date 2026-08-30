@@ -24,7 +24,10 @@
 # that failure is expected and this script is not meant to pass yet.
 set -uo pipefail
 
-SERIAL="${SMOKE_SERIAL:-192.168.0.52:5555}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./adb-device.sh
+source "$SCRIPT_DIR/adb-device.sh"
+
 DEV_APP_ID="xyz.wallpanel.app.kmb.dev"
 LAUNCH_ACTIVITY="xyz.wallpanel.app.ui.activities.BrowserActivityNative"
 ADB_TIMEOUT=15
@@ -48,10 +51,16 @@ die() {
     exit 1
 }
 
-log "Connecting to $SERIAL"
-timeout "$ADB_TIMEOUT" adb connect "$SERIAL" >/dev/null 2>&1
-STATE=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' || true)
-[[ "$STATE" == "device" ]] || die "device $SERIAL unreachable (get-state='$STATE')"
+if [[ -n "${SMOKE_SERIAL:-}" ]]; then
+    SERIAL="$SMOKE_SERIAL"
+    log "Connecting to $SERIAL"
+    timeout "$ADB_TIMEOUT" adb connect "$SERIAL" >/dev/null 2>&1
+    STATE=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' || true)
+    [[ "$STATE" == "device" ]] || die "device $SERIAL unreachable (get-state='$STATE')"
+else
+    SERIAL=$(wallpanel_resolve_adb_serial) || die "could not reach the tablet at $WALLPANEL_TABLET_IP (pinned port and mdns discovery both failed -- see [adb-device] messages above)"
+    log "Connected to $SERIAL"
+fi
 
 get_pid() {
     timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell pidof "$DEV_APP_ID" 2>/dev/null | tr -d '\r' | awk '{print $1}'
