@@ -117,6 +117,138 @@ own security checks) from our safety net until upstream fixes the underlying
 Gradle/JDK issue or someone re-scopes the disable. Not a vulnerability by
 itself, just a reduced signal we should be aware we're not getting.
 
+## Renderer-crash recovery: reproduced, and it does not always hold (2026-08-30)
+
+The WebView renderer-crash recovery verified in an earlier feature (see
+CHANGELOG.md, 2026-08-30 "WebView renderer-crash recovery, service handler leak
+fix") turns out to be incomplete. This section documents a reproducible on-device
+trigger and the root cause of why recovery sometimes fails.
+
+### The trigger
+
+`adb shell am crash <target>` injects a `RemoteServiceException` ("shell-induced
+crash") into a running process. Two forms were tested against the
+`xyz.wallpanel.app.kmb.dev` (dev) build on the physical tablet:
+
+- **By package name** (`adb shell am crash xyz.wallpanel.app.kmb.dev`): this is
+  the form that produced the historical evidence below. Android resolves the
+  package name against all processes associated with that app's uid, including
+  isolated WebView renderer child processes bound via `bindService` -- so this
+  form can hit either the main process or an associated renderer process,
+  non-deterministically, depending on which are alive at call time.
+- **By explicit PID, targeting the renderer specifically**: find the renderer's
+  PID via `adb shell dumpsys activity services`, which lists a `ServiceRecord`
+  under the owning app's component
+  (`xyz.wallpanel.app.kmb.dev/org.chromium.content.app.SandboxedProcessService0:N`)
+  followed by `app=ProcessRecord{... <pid>:com.google.android.webview:sandboxed_process0:...}`.
+  `am crash <pid>` on that PID deterministically kills the renderer, not the
+  main process.
+
+### Two outcomes observed from the same trigger technique
+
+- **App abort** (package-name form, 2026-08-30 09:55:14-09:55:16): renderer PID
+  29137 received the shell-induced `RemoteServiceException` at 09:55:14.323, then
+  at 09:55:16.408 the main app process (pid 28922) aborted with:
+  ```
+  Abort message: '[FATAL:third_party/crashpad/crashpad/client/crashpad_client_linux.cc:744]
+  Render process (29137)'s crash wasn't handled by all associated  webviews,
+  triggering application crash.
+  ```
+  This is byte-for-byte the same abort signature as the original organic crash
+  captured from the TheTimeWalker build on 2026-08-26 (`logs/crash-history.log`)
+  that motivated the recovery fix in the first place -- same terminal state,
+  same Crashpad message. Confirmed representative of a real renderer crash, not
+  an artifact of the injection method.
+- **Clean recovery** (explicit-PID form, 2026-08-30 11:14:57): renderer PID 7128
+  received the same kind of shell-induced crash (`Abort message: '[FATAL:...
+  java_exception_reporter.cc:93] Uncaught exception'`, tid 7128), and the app's
+  main process (pid 7014) was unaffected -- no pid change, no abort. The
+  renderer's `ServiceRecord` was observed to move from
+  `SandboxedProcessService0:0` to `:1` immediately after, confirming
+  `BrowserActivityNative.onWebViewRenderProcessGone` ran and rebuilt the WebView.
+  This also answers whether a shell-induced kill even delivers
+  `onRenderProcessGone` at all: **yes** -- the only code path that produces a new
+  renderer service instance is that callback, so its being reached is direct
+  evidence the callback fired, not speculation about Android internals.
+
+  One caveat: an organic OOM-kill likely arrives with `RenderProcessGoneDetail
+  .didCrash()=false` where a shell-induced kill arrives with `didCrash()=true`.
+  `InternalWebClient.onRenderProcessGone` does not branch on `didCrash()`, so
+  this difference does not change recovery behaviour here -- the repro is
+  representative for this codebase's recovery logic either way.
+
+### Root cause of the intermittency: an unprotected second WebView
+
+A full inventory of every `WebView` instantiation in the codebase:
+
+| WebView | Location | `WebViewClient` | `onRenderProcessGone` |
+|---|---|---|---|
+| Main browser | `activity_browser.xml:35`, bound in `BrowserActivityNative.kt:373` | `InternalWebClient` (`BrowserActivityNative.kt:400`) | **Yes** -- `InternalWebClient.kt:113-123`, returns `true`, triggers rebuild |
+| Post-crash replacement | Created in `BrowserActivityNative.kt:299` (`onWebViewRenderProcessGone`) | Same `InternalWebClient`, reattached at `configureWebViewClient()` | **Yes** -- inherits the same handler |
+| Screensaver | `dialog_screen_saver.xml` (6 layout variants), bound in `ScreenSaverView.kt:199` | Anonymous `object : WebViewClient() { ... }` | **No** -- no override present, falls back to the framework default (`return false`) |
+| `CustomWebView` | `ui/views/CustomWebView.kt` | `WebClientRenderWrapper` (has the override) but wiring is **commented out** (`CustomWebView.kt:48`) | Dead code, never instantiated anywhere |
+
+Chromium's WebView implementation shares one OS-level renderer process across
+all `WebView` Java objects live in the same app process (by default, without
+per-site process isolation). When that shared renderer crashes, Crashpad
+invokes `onRenderProcessGone` on every attached `WebViewClient`; the crash is
+only considered "handled" if **all of them** return `true`. The abort message's
+plural wording -- "wasn't handled by all associated **webviews**" -- is Chromium
+naming this exact condition. If the screensaver's WebView (default handler,
+implicitly returns `false`) is alive at the moment the shared renderer crashes,
+the crash is unhandled regardless of the main browser's correct handler, and
+the whole app aborts. If the screensaver was never shown, only the protected
+main WebView is attached, and recovery succeeds.
+
+Debug builds force `configuration.hasClockScreenSaver = true`
+(`BrowserActivityNative.kt:112`), and the screensaver's default inactivity
+timeout is 30s (`Configuration.kt:292`, `key_screensaver_inactivity_time`
+default `30000`). This matches the observed intermittency: crashes triggered
+immediately after a fresh launch (screensaver not yet shown) recovered cleanly;
+the crash that produced the historical abort was preceded by several minutes of
+idle test activity, consistent with the screensaver having appeared by then.
+This was confirmed live: a rapid-fire loop of renderer-crash cycles (each a
+few seconds apart) survived cleanly every time, because it never left the app
+idle long enough for the screensaver to mount. Once `scripts/smoke-renderer-crash.sh`
+was changed to wait 35s untouched (past the 30s default) before each crash,
+it reliably reproduced the exact same abort signature on the first cycle:
+```
+Abort message: '[FATAL:third_party/crashpad/crashpad/client/crashpad_client_linux.cc:744]
+Render process (10467)'s crash wasn't handled by all associated  webviews,
+triggering application crash.
+```
+This closes the loop: idle time is the discriminating variable, matching the
+screensaver's inactivity-gated mount exactly. Directly confirmed by inspecting
+`dumpsys window windows` after a 35s untouched wait (no wake beforehand, since
+waking the device dismisses the screensaver): two distinct `Window` entries are
+present under the app's package/token, not one -- the main activity's content
+window plus the screensaver dialog's window. The unprotected second WebView is
+provably mounted at the moment the crash trigger fires.
+
+### Production exposure -- not yet known
+
+`hasClockScreenSaver` is forced `true` on debug builds only
+(`BrowserActivityNative.kt:112`, gated on `BuildConfig.DEBUG`). Whether the
+**production** panel (`xyz.wallpanel.app.kmb`) is exposed to this exact failure
+depends on whether its screensaver is enabled in its own persisted settings,
+which live in app-private SharedPreferences and are not readable from outside
+the app via adb -- this needs checking in the app's Settings UI on the device.
+If the production screensaver is enabled, the unprotected WebView is mounted
+during the panel's dominant real-world state (idle on the wall, which is most
+of the time), meaning current recovery protects the rare actively-in-use case
+and not the one that matters for a kiosk display. If it's disabled, this
+failure mode is effectively dev-only until/unless it's turned on. This
+materially changes how urgent the `ScreenSaverView.kt` fix is and was not
+determined in this investigation.
+
+**Not fixed in this task** (out of scope, no app-code changes made): wiring
+`onRenderProcessGone` on the screensaver's `WebViewClient` in
+`ScreenSaverView.kt` -- the same pattern as `InternalWebClient`, either by
+having it call back to rebuild the screensaver's WebView or, more simply,
+returning `true` and letting the screensaver dialog be dismissed/recreated on
+next show. `scripts/smoke-renderer-crash.sh` (see CHANGELOG) exercises this gap
+and is currently expected to fail.
+
 ## Recommendation
 
 **Proceed on the Darknetzz base**, with finding #1 (deferred-init handler not
