@@ -67,8 +67,11 @@ Commit and push to `origin master` automatically once a change is complete
 and verified (build succeeds / tests pass as applicable) — do not stop to ask
 for confirmation first. This applies to normal working commits on this repo.
 Still ask first for anything destructive or history-rewriting (force-push,
-reset --hard, rebase, branch deletion) and for tags/GitHub releases tied to a
-signed APK release, since those are harder to unwind.
+reset --hard, rebase, branch deletion).
+
+Tags and GitHub releases for a signed APK follow the release policy in
+"Deploy and verify" — created automatically, without prompting, once both
+smoke scripts pass. Not a confirmation point.
 
 ## Delegation
 
