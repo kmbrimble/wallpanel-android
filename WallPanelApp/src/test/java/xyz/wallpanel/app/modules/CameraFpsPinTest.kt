@@ -7,19 +7,22 @@ import org.junit.Test
 class CameraFpsPinTest {
 
     /**
-     * The ranges this Lenovo TB-J616F actually reports, as logged from the device.
+     * The ranges the Lenovo TB-J616F actually reports, copied from the device log.
      */
     private val lenovoRanges = listOf(
-            intArrayOf(5000, 30000),
+            intArrayOf(10000, 10000),
             intArrayOf(15000, 15000),
-            intArrayOf(24000, 24000),
+            intArrayOf(15000, 20000),
+            intArrayOf(20000, 20000),
+            intArrayOf(5000, 30000),
             intArrayOf(30000, 30000)
     )
 
     @Test
-    fun `prefers a fixed low range over a wide one with the same floor`() {
-        // The whole point of the change: [5000,30000] floats up to 30fps, so it must lose.
-        assertArrayEquals(intArrayOf(15000, 15000), CameraFpsPin.chooseRange(lenovoRanges, 5f))
+    fun `prefers the lowest fixed range over the wide one that matches the floor exactly`() {
+        // The whole point of the change: [5000,30000] matches a 5fps floor perfectly but floats up
+        // to 30fps in practice, so it must lose to the 10fps hardware floor.
+        assertArrayEquals(intArrayOf(10000, 10000), CameraFpsPin.chooseRange(lenovoRanges, 5f))
     }
 
     @Test

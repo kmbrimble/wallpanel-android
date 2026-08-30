@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+### 2026-08-30 — Reduce camera capture rate at the sensor
+
+The front camera drives motion detection so the screensaver dismisses on walk-up. It was
+running far faster than that job needs, burning CPU, power and log bandwidth.
+
+What changed:
+- `default_camera_fps` 15 → 5 (`donottranslate.xml`), and the matching parse-failure
+  fallback in `Configuration.cameraFPS` 15.0F → 5.0F. The user-facing **Camera FPS**
+  preference already existed and already reached `CameraSource.setRequestedFps` via
+  `Configuration.cameraFPS` → `CameraReader.initCamera`, so this is a default change on
+  an already-wired setting, not a new mechanism.
+- `pref_camera.xml` had a hardcoded `android:summary="15"` that never tracked the value;
+  pointed it at `@string/pref_camera_fps_summary` and updated that string.
+- New `CameraFpsPin` (`modules/CameraFpsPin.kt`), called after every successful
+  `cameraSource.start()` in `CameraReader.startCamera` (all three paths, including both
+  camera-facing fallbacks). `CameraSource.setRequestedFps` only selects the *closest*
+  supported range by an undocumented min+max metric, which can land on a wide range such
+  as `[5000,30000]` that the HAL floats up to its ceiling in good light. `CameraFpsPin`
+  reaches the underlying `Camera` and sets a range chosen by its **ceiling**, which is
+  what actually caps frame delivery. Guarded in try/catch — a camera running too fast
+  still works, one we've thrown out of does not.
+- Unit test `CameraFpsPinTest` covers the range-selection logic against the ranges this
+  Lenovo really reports.
+
+Measured on `xyz.wallpanel.app.kmb.dev` (Lenovo TB-J616F, Android 12), 30s windows.
+Each delivered frame emits two `Camera3-OutputStream` line groups (`format:17` and
+`format:35`), so frame rate is derived from timestamps, not raw line counts:
+
+| | before (pref 15) | after (default 5) |
+|---|---|---|
+| delivered frame rate | 15.0 fps (frames 66ms apart) | 10.0 fps (frames 100ms apart) |
+| `Camera3-OutputStream` lines/s | 88.0 | 60.4 |
+| `dumpsys meminfo` TOTAL PSS | 170.6 MB | 174.5 MB |
+
+Supported preview FPS ranges on this device, read from the hardware:
+`[10000,10000] [15000,15000] [15000,20000] [20000,20000] [5000,30000] [30000,30000]`
+
+**5fps is not reachable on this hardware.** The lowest *fixed* range is 10fps; the only
+range with a 5fps floor is `[5000,30000]`, which floats to 30fps. So the reduction is
+1.5x, not the 6x hoped for — 10fps is the sensor floor, and the pin holds it there.
+No frame-level throttling was added: it would cut detection CPU but leave the HAL, power
+draw and log noise untouched, and the sensor is already at its floor.
+
+**Memory did not improve** (170.6 → 174.5 MB PSS, within run-to-run noise). The
+hypothesis that capture rate drives the renderer memory pressure is not supported.
+
+Also noted: `setting_camera_processinginterval` (default 500ms) is defined in resources
+but read by no Kotlin code — a dead preference, left alone as out of scope.
+
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
 Plan:
