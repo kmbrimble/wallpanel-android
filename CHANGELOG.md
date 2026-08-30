@@ -202,3 +202,27 @@ Plan (branch `feature/screensaver-renderer-crash`, stacked on
   wait, across multiple cycles; then `scripts/smoke-device.sh` for regression.
 - Release: version bump `-kmb.1` → `-kmb.2`, build/sign the arm64-v8a split per
   CLAUDE.md. Do not install to the production panel.
+
+Result:
+- Fix confirmed correct: `smoke-renderer-crash.sh` with the 35s idle wait (the
+  scenario that deterministically FAILed before this fix) now PASSes across 4
+  consecutive cycles; without the idle wait, PASSes across 6. `smoke-device.sh`
+  also PASSes (regression check). Root cause matched exactly what REVIEW.md
+  predicted: the repro exercises debug builds' forced clock-mode, where
+  `loadWebPage()` never runs, so the fix had to attach the crash handler
+  unconditionally in `init()`, not just inside `loadWebPage()`.
+- `CustomWebView.kt` and `WebClientRenderWrapper.kt` deleted (separate commit,
+  confirmed zero live references, clean build after deletion).
+- Mid-task, the user overrode two standing instructions: (1) "do not merge" for
+  this feature and its stacked base `feature/renderer-crash-repro` — both
+  merged to master; (2) the manual-install release policy — replaced with
+  auto-promotion (CLAUDE.md "Deploy and verify — release policy"): verify on
+  the dev app with both smoke scripts, and if green, install the signed
+  arm64-v8a APK straight to `xyz.wallpanel.app.kmb` with no confirmation
+  prompt. Both scripts passed, so this release was auto-promoted per that
+  policy. versionCode 12001 → 12002, versionName `... -kmb.1` → `... -kmb.2`.
+  Signature SHA-256 confirmed unchanged:
+  `4d:a6:a8:5a:62:86:f6:85:68:d7:ed:e5:52:f6:d2:6c:bd:d4:ba:66:c1:15:a5:e1:8a:9e:24:c5:ef:5f:22:91`.
+- Whether the *previously installed* production build was already exposed to
+  this bug depends on its own screensaver setting (REVIEW.md's still-open
+  question) — this release fixes it either way, going forward.
