@@ -51,17 +51,39 @@ hypothesis that capture rate drives the renderer memory pressure is not supporte
 Also noted: `setting_camera_processinginterval` (default 500ms) is defined in resources
 but read by no Kotlin code — a dead preference, left alone as out of scope.
 
-**NOT PROMOTED.** `scripts/smoke-device.sh` PASSes. `scripts/smoke-renderer-crash.sh`
-FAILs at cycle 1 with "no renderer process found" — but it fails **identically on
-unmodified master** with the same device state, so it is not caused by this change (a
-camera-only diff cannot affect WebView renderer processes). The dev app never spawns a
-`SandboxedProcessService1` renderer: with `settings_screensaver=true` the debug build
-shows its forced *clock* screensaver (screenshot confirmed), and `settings_screensaver`
-is the same key as `hasClockScreenSaver`; switching to `pref_web_screensaver=true` still
-produced no renderer. The device config the previous session's green run relied on was
-lost when this session ran `pm clear` on the dev app, and it has not been reconstructed.
+**NOT PROMOTED — blocked by a device-side fault, not by this change.**
+
+`scripts/smoke-device.sh` PASSes. `scripts/smoke-renderer-crash.sh` FAILs at cycle 1
+with "no renderer process found", and fails **identically on unmodified master** with the
+same device state — a camera-only diff cannot affect WebView renderer processes.
+
+Diagnosis: the tablet will not spawn a WebView renderer for this app at all. Its
+`ServiceRecord{... xyz.wallpanel.app.kmb.dev/org.chromium.content.app.SandboxedProcessService1:0}`
+stays **Pending** with no bound `app=ProcessRecord`, and logcat shows
+`cr_ChildProcLH: ScopedServiceBindingBatch.tryActivate: false` plus
+`ProcessStats: Binding service ... without owner`. So a WebView is created and *does*
+request a renderer; the OS never starts the process. Ruled out during investigation:
+- app not foreground / screen asleep — reproduced with `svc power stayon true`, screen
+  verifiably `mWakefulness=Awake` and the activity holding window focus;
+- screensaver config — the debug build's forced *clock* screensaver was confirmed by
+  screenshot, and `settings_screensaver` turns out to be the same key as
+  `hasClockScreenSaver`; switching to `pref_web_screensaver=true` changed nothing;
+- stale process state — the tablet was rebooted and the fault persisted;
+- WebView being broken system-wide — another app's sandboxed process was running fine.
+
+**Implication beyond this feature:** if renderers cannot spawn for this app, the
+screensaver renderer-crash protection added earlier cannot engage on the panel either,
+and `smoke-renderer-crash.sh` cannot gate any release until this is resolved. Worth
+investigating separately.
+
 Per CLAUDE.md ("If either script fails, do not promote"), the branch is pushed and master
-is untouched.
+is untouched. Production `xyz.wallpanel.app.kmb` was left running and foregrounded,
+measured at ~14.8 fps (still the old default).
+
+Also: rebooting the tablet moved adb-over-TCP off port 5555 to **42049**, so CLAUDE.md's
+documented `192.168.0.52:5555` and `scripts/adb-device.sh`'s pin are both stale.
+`SMOKE_SERIAL=192.168.0.52:42049` works for the smoke scripts. The port looks
+reboot-assigned rather than fixed, so it has deliberately not been hardcoded.
 
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
