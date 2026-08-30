@@ -37,6 +37,8 @@ output.json
 *.jks
 *.keystore
 .env
+.dev.vars
+
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json

@@ -2,6 +2,83 @@
 
 ## [Unreleased]
 
+### 2026-08-30 — Remove Firebase, Crashlytics and LeakCanary from the build
+
+There is no `google-services.json` in this project, so Firebase had nothing to talk to,
+yet `FirebaseInitProvider` was still a published content provider on the running
+production app — init code on every launch, on a device that holds our Home Assistant
+credentials, for zero benefit.
+
+**What Darknetzz's conditional already covered, and what it didn't.** The
+`if (file('google-services.json').exists())` block at the bottom of
+`WallPanelApp/build.gradle` gated only *plugin application* — the `google-services` and
+`firebase-crashlytics` Gradle plugins. The Firebase **SDK dependencies** were declared
+unconditionally, and it is the SDK, not the plugin, that contributes
+`FirebaseInitProvider` to the merged manifest. So the conditional never prevented
+Firebase from shipping or initialising; it only stopped the build-time config processing.
+
+Removed:
+
+- Root `build.gradle`: the `firebase-crashlytics-gradle` and `google-services`
+  buildscript classpaths, which existed only to serve the conditional block.
+- Module deps: `firebase-analytics:21.1.1` (declared a second time, buried mid-way
+  through the lifecycle block), `firebase-core`, the `firebase-bom` platform, the BoM
+  `firebase-analytics`, and `firebase-crashlytics-ktx`.
+- The conditional `apply plugin` block itself.
+- `CrashlyticsDebugTree.kt` and `CrashlyticsTree.java`, both deleted whole. The four
+  `com.google.firebase.*` imports in `BrowserActivityNative.kt` were already dead — the
+  file had no body references to them.
+- The `-dontwarn com.google.firebase.**` proguard rule.
+
+**Release builds now plant no Timber tree, deliberately.** The only release tree was
+`CrashlyticsDebugTree`, which wrote exclusively to Crashlytics and never to logcat — so
+release Timber output already went nowhere. Planting nothing preserves the existing
+behaviour exactly. `WallpanelDebugTree` was *not* planted in release to compensate: that
+would add prod logcat volume the previous commit just spent effort cutting.
+
+**LeakCanary was already `debugImplementation`** and was never in the shipped production
+APK — `dumpsys package xyz.wallpanel.app.kmb | grep -i leak` returns nothing, and the
+production provider list has no LeakCanary entry. The monkey that selected
+`LeakLauncherActivity` was running against the **dev** app, which is a debug build. It
+has been removed entirely rather than left on debug: its only observed effect in this
+project has been costing a diagnostic session, no leak report has ever been read, and it
+publishes a launchable activity that the smoke monkey keeps finding. Reinstating it is
+one line if a real leak hunt ever needs it.
+
+`MlKitInitProvider` remains in the provider list. It comes from ML Kit (camera), which is
+explicitly out of scope here. The `com.google.firebase.components:*` metadata entries
+still in the manifest are ML Kit component registrars for the same reason — ML Kit is
+built on firebase-components. Neither is Firebase itself.
+
+**Measured on the panel, same dashboard, both samples at comparable process uptime:**
+
+- APK (arm64-v8a split, signed): 19,691,442 → 19,218,883 bytes, **−461 KB (−2.4%)**.
+- Published content providers: `MlKitInitProvider`, `FirebaseInitProvider`,
+  `InitializationProvider` → `MlKitInitProvider`, `InitializationProvider`.
+  `FirebaseInitProvider` is confirmed gone from the release artifact's manifest, not just
+  from the running app.
+- TOTAL PSS: **no improvement, and the comparison is not valid.** Before 227–231MB
+  (pid 20761, 27:56 uptime); after 447–450MB (pid 25234, 28:56 uptime). Total PSS went
+  *up* by ~220MB, and none of that movement is attributable to this change. The two
+  samples differ in ways that swamp anything Firebase could contribute: GL mtrack
+  33.8MB → 225.9MB and EGL mtrack 31.5MB → 55.9MB, with 3 live WebViews in the before
+  sample against 2 in the after, and the before-process had been through four renderer
+  crashes while the after-process was a clean start. **Treat the PSS before/after as a
+  null result at best.** Firebase was never a plausible contributor to a 116–174MB
+  working set, and this measurement does not show that it was.
+
+  The one component that moved in the right direction is Code PSS, 58.2MB → 43.3MB
+  (.apk mmap −6.1MB, .so −3.2MB, .dex −2.1MB, .jar −2.6MB). That is the right shape for
+  deleting the Firebase SDKs, but it is **also confounded** by the differing WebView
+  count and renderer history between the two samples, so it should not be quoted as a
+  clean −14.8MB win.
+
+  **Incidental finding worth more than this change**: the live panel is currently
+  holding **225.9MB of GL mtrack** — GPU memory, in one process. That is the dominant
+  term in the panel's footprint by a wide margin and it is WebView/graphics, not
+  providers, not Firebase, and not camera capture rate. Any further memory work should
+  start there.
+
 ### 2026-08-30 — Cut logcat volume at source, and add retention
 
 The capture was writing ~250MB/h, almost all of it MediaTek camera HAL chatter. The tag
