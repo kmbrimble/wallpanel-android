@@ -81,6 +81,19 @@ Result:
   named in the task instructions isn't running (`tmux list-sessions` doesn't show it),
   and its log file stopped growing hours ago. Did not restart or investigate further.
 
+**Correction (2026-08-30, follow-up session):** the "did not reliably produce a
+confirmable result" line above was wrong. `am crash xyz.wallpanel.app.kmb.dev` (by
+package name) DID work -- it crashed the app's WebView renderer process, and the
+crash buffer shows the main app process aborted two seconds later with the exact
+"Render process ...'s crash wasn't handled by all associated webviews" signature.
+This was missed at the time because manual `pidof` polling happened to sample around
+the event rather than through it. See REVIEW.md, "Renderer-crash recovery: reproduced,
+and it does not always hold" for the full writeup and `scripts/smoke-renderer-crash.sh`
+for the reusable repro. The user caught this from the device's crash buffer after the
+fact; corrected here rather than left standing.
+
+### 2026-08-30 — WebView renderer-crash recovery, service handler leak fix, signed release
+
 Plan:
 - Verify `onRenderProcessGone` recovery path (already present via `InternalWebClient` →
   `BrowserActivityNative.onWebViewRenderProcessGone`, returns `true` so Chromium does not
@@ -116,3 +129,54 @@ Result:
   zipaligned, and signed out-of-band with apksigner using the keystore at
   `/projects/wallpanel-release.jks`. Verified signature: SHA-256
   `4d:a6:a8:5a:62:86:f6:85:68:d7:ed:e5:52:f6:d2:6c:bd:d4:ba:66:c1:15:a5:e1:8a:9e:24:c5:ef:5f:22:91`.
+
+### 2026-08-30 — Renderer-crash repro script and investigation
+
+Follow-up to the test-infrastructure session: the "`am crash` did not reliably
+produce a confirmable result" line in that entry was wrong (see the correction
+note above it). The user caught it from the device's crash buffer; this session
+turned it into a reusable, deterministic repro and investigated why recovery
+doesn't always hold.
+
+- `scripts/smoke-renderer-crash.sh`: requires the dev app already installed and
+  running. Finds the current WebView renderer's PID via `dumpsys activity services`
+  (a `ServiceRecord` under the app's own component ties directly to the renderer's
+  PID, avoiding the non-determinism of `am crash <package>`, which can hit either
+  the main process or an associated renderer depending on what's alive), crashes it
+  with `am crash <pid>`, and asserts the app process survives, holds window focus,
+  and gets a fresh renderer. Loops several cycles, each waiting 35s untouched first
+  so the screensaver's 30s inactivity timeout has a chance to fire -- a first version
+  without that wait passed reliably for up to 6 rapid cycles, which turned out to be
+  a false PASS: it never left the app idle long enough for the failure condition to
+  occur. With the idle wait, it fails deterministically and reproducibly on the first
+  cycle with the exact historical abort signature.
+- Investigation (full writeup in REVIEW.md): a repository-reader inventory of every
+  `WebView` instantiation found the screensaver's `WebViewClient`
+  (`ScreenSaverView.kt:199`) has no `onRenderProcessGone` override, unlike the main
+  browser's `InternalWebClient`. Chromium shares one renderer process across all
+  `WebView` objects in an app and only considers a crash "handled" if every attached
+  `WebViewClient` returns `true` from `onRenderProcessGone` -- if the screensaver
+  (default `false`) is alive when the shared renderer crashes, the whole app aborts
+  regardless of the main browser's correct handler. This matches the abort message's
+  plural wording ("wasn't handled by all associated **webviews**") exactly, and
+  matches debug builds forcing `hasClockScreenSaver = true` with a 30s default
+  inactivity timeout.
+- Per advisor: the repro is representative of a real renderer crash (same abort
+  signature as the original organic crash on the archived build) and does deliver
+  `onRenderProcessGone` (proven by the clean-recovery case producing a fresh renderer
+  `ServiceRecord`) -- it is not a harsher teardown than an organic crash for this
+  codebase's recovery logic, since `InternalWebClient` doesn't branch on
+  `RenderProcessGoneDetail.didCrash()`.
+- Also fixed on this branch (script bug, not app code): `smoke-device.sh`'s
+  `device_time()` passed an unquoted date format string through `adb shell`, so the
+  remote shell only ever saw `+%m-%d` -- every crash-buffer time filter in every
+  smoke-device.sh run to date has been scanning an unparseable/wrong range. Fixed by
+  quoting the whole format string as one argument for the remote shell.
+- CLAUDE.md: release process now specifies signing the `arm64-v8a` split (19.6MB, our
+  tablet's actual ABI) instead of the universal APK (36.1MB), with the verified
+  `zipalign` + `apksigner sign --ks-pass file:/projects/.env.keystore-pass` +
+  `apksigner verify` invocation, and a note not to attach the `.idsig` sidecar to
+  releases.
+- No app code changed in this session; `feature/test-infrastructure` was merged to
+  `master` first (unchanged, pre-approved), and this work is on
+  `feature/renderer-crash-repro`, pushed but not merged.
