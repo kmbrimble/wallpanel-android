@@ -169,14 +169,26 @@ promoting.
 
   **Why not the dev app:** the dev app cannot obtain a WebView renderer on this
   tablet. It requests `SandboxedProcessService1`, whose ServiceRecord never gets
-  a bound process, while production gets `SandboxedProcessService0` and works
-  normally. Force-stopping prod and the launcher did not change it; `pm clear`
-  on dev only left it with no configured URL and so no WebView at all. **This is
-  unexplained and deliberately closed — do not re-investigate it.** It affects
-  only the harness, never the shipping app. Testing the signed production
-  artifact is better evidence anyway: it is exactly what ships, on exactly the
-  config it ships onto. Crashing the live panel's renderer is an accepted cost —
-  this is a personal wall panel, explicitly not critical infrastructure.
+  a bound process, while production usually gets `SandboxedProcessService0` and
+  works normally. Force-stopping prod and the launcher did not change it;
+  `pm clear` on dev only left it with no configured URL and so no WebView at all.
+  Testing the signed production artifact is better evidence anyway: it is exactly
+  what ships, on exactly the config it ships onto. Crashing the live panel's
+  renderer is an accepted cost — this is a personal wall panel, explicitly not
+  critical infrastructure.
+
+  **CORRECTION (2026-08-30): this was previously recorded as "unexplained and
+  deliberately closed — do not re-investigate; it affects only the harness, never
+  the shipping app." That last claim is false and the closure is withdrawn.** The
+  production app was observed in exactly this state: after a renderer crash and a
+  force-stop restart, `xyz.wallpanel.app.kmb` requested
+  `SandboxedProcessService1:0`, whose ServiceRecord sat Pending with
+  `binder=null requested=false received=false hasBound=false`, with **no**
+  `SandboxedProcessService0:*` ServiceRecords present at all — so this is not slot
+  exhaustion. The panel was left black, with the app process alive and holding
+  window focus. It is a real production failure mode, not a harness quirk, and it
+  is open. See "Known gap" above and the renderer-bind investigation in
+  `CHANGELOG.md`.
 - **If both pass, promote automatically**: install the signed arm64-v8a APK to
   the production app `xyz.wallpanel.app.kmb` —
   ```
