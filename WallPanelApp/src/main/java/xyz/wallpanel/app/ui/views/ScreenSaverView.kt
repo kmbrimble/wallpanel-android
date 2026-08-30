@@ -17,6 +17,7 @@
 package xyz.wallpanel.app.ui.views
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.content.Context
 import android.content.DialogInterface
 import android.net.http.SslError
@@ -127,6 +128,14 @@ class ScreenSaverView : RelativeLayout {
         showWallpaper = hasWallpaper
         showClock = hasClock
 
+        // Attach unconditionally: screenSaverWebView is inflated as part of the dialog
+        // layout in every mode (clock, wallpaper, web), and Chromium shares one renderer
+        // process across all WebViews in the app -- a crash there aborts the whole app
+        // unless every attached client returns true from onRenderProcessGone. Without
+        // this, clock/wallpaper mode (loadWebPage() never runs) left this WebView with no
+        // client at all, i.e. the framework default that returns false.
+        binding.screenSaverWebView.webViewClient = ScreenSaverWebClient()
+
         // always allow the clock screensaver to be displayed
         if(showClock) {
             setClockViews()
@@ -176,6 +185,25 @@ class ScreenSaverView : RelativeLayout {
         loadWebPage(url)
     }
 
+    // Matches InternalWebClient's onRenderProcessGone semantics (BrowserActivityNative.kt):
+    // return true so Chromium treats the crash as handled and doesn't abort the app. The
+    // screensaver is transient -- DialogUtils.showScreenSaver/hideScreenSaverDialog discard
+    // and freshly re-inflate the whole dialog (including this WebView) on every show/hide --
+    // so dismissing it is the direct equivalent of the main browser's WebView rebuild, without
+    // reimplementing what dismiss+re-show already does for free.
+    private open inner class ScreenSaverWebClient : WebViewClient() {
+        @TargetApi(Build.VERSION_CODES.O)
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                super.onRenderProcessGone(view, detail)
+                Timber.w("Screensaver WebView render process gone (crashed=%s)", detail.didCrash())
+                closeView()
+                return true
+            }
+            return super.onRenderProcessGone(view, detail)
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun loadWebPage(url: String) {
         Timber.d("loadWebPage url ${url}")
@@ -196,7 +224,7 @@ class ScreenSaverView : RelativeLayout {
             closeView()
             false
         }
-        binding.screenSaverWebView.webViewClient = object : WebViewClient() {
+        binding.screenSaverWebView.webViewClient = object : ScreenSaverWebClient() {
             //If you will not use this method url links are open in new browser not in webview
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
                 view.loadUrl(url)
