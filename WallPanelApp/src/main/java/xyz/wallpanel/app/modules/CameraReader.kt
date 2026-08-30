@@ -128,15 +128,18 @@ constructor(private val context: Context) {
                 try {
                     cameraSource = initCamera(configuration.cameraId, configuration.cameraFPS)
                     cameraSource?.start()
+                    CameraFpsPin.apply(cameraSource, configuration.cameraFPS)
                 } catch (e: Exception) {
                     Timber.e(e.message)
                     try {
                         if (configuration.cameraId == CAMERA_FACING_FRONT) {
                             cameraSource = initCamera(CAMERA_FACING_BACK, configuration.cameraFPS)
                             cameraSource?.start()
+                            CameraFpsPin.apply(cameraSource, configuration.cameraFPS)
                         } else {
                             cameraSource = initCamera(CAMERA_FACING_FRONT, configuration.cameraFPS)
                             cameraSource?.start()
+                            CameraFpsPin.apply(cameraSource, configuration.cameraFPS)
                         }
                     } catch (e: Exception) {
                         Timber.e(e.message)

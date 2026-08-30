@@ -150,6 +150,18 @@ promoting.
   The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
   `adb connect 192.168.0.52:5555` first if it isn't already listed in
   `adb devices`).
+
+  **Address resolution is port-scan based.** A tablet reboot drops the
+  `adb tcpip 5555` pin and Android re-assigns wireless debugging to a random
+  ephemeral port, so `scripts/adb-device.sh` tries `<ip>:5555` first and, on
+  failure, port-scans `30000-60999` (bounded parallel probes via bash's
+  `/dev/tcp`, ~14s for the full range against a live device), connects to the
+  first candidate that reports `device`, then re-pins 5555 so the fast path
+  works again. **Do not reinstate mDNS discovery** (`adb mdns services`): it
+  relies on multicast, which does not cross this container's Docker bridge, so
+  it always returns zero services here — it failed closed, but could never
+  succeed, which made it dead code that read as functional. `SMOKE_SERIAL`
+  remains a raw bypass for both smoke scripts.
 - **If either script fails, do not promote.** Report and stop.
 - Keep every promoted APK at `release-out/WallPanelApp-arm64-<versionName>.apk`
   and attach it to its GitHub release. **Never delete older ones.**

@@ -280,7 +280,7 @@ constructor(private val context: Context, private val sharedPreferences: SharedP
         get() = try {
             getStringPref(R.string.key_setting_camera_fps, R.string.default_camera_fps).trim().toFloat()
         } catch (e: Exception) {
-            15.0F
+            10.0F
         }
 
     val testZoomLevel: Float

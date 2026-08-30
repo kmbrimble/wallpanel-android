@@ -123,6 +123,108 @@ The panel is left running the master-signed candidate. It is identical in conten
 `release-out/WallPanelApp-arm64-0.12.0-Build-0-kmb.2.apk` but has a different signing
 timestamp; `adb install -r -d` with that file puts the exact release artifact back if
 that matters.
+### 2026-08-30 — Reduce camera capture rate at the sensor
+
+The front camera drives motion detection so the screensaver dismisses on walk-up. It was
+running far faster than that job needs, burning CPU, power and log bandwidth.
+
+What changed:
+- `default_camera_fps` 15 → 10 (`donottranslate.xml`), and the matching parse-failure
+  fallback in `Configuration.cameraFPS` 15.0F → 10.0F. 10 rather than 5 because 10fps is
+  this hardware's lowest *fixed* preview range (see below) — defaulting to a rate the
+  sensor cannot deliver would advertise a lie in the settings UI, the same class of
+  problem as the hardcoded `android:summary="15"` fixed below. The user-facing **Camera FPS**
+  preference already existed and already reached `CameraSource.setRequestedFps` via
+  `Configuration.cameraFPS` → `CameraReader.initCamera`, so this is a default change on
+  an already-wired setting, not a new mechanism.
+- `pref_camera.xml` had a hardcoded `android:summary="15"` that never tracked the value;
+  pointed it at `@string/pref_camera_fps_summary` and updated that string.
+- New `CameraFpsPin` (`modules/CameraFpsPin.kt`), called after every successful
+  `cameraSource.start()` in `CameraReader.startCamera` (all three paths, including both
+  camera-facing fallbacks). `CameraSource.setRequestedFps` only selects the *closest*
+  supported range by an undocumented min+max metric, which can land on a wide range such
+  as `[5000,30000]` that the HAL floats up to its ceiling in good light. `CameraFpsPin`
+  reaches the underlying `Camera` and sets a range chosen by its **ceiling**, which is
+  what actually caps frame delivery. Guarded in try/catch — a camera running too fast
+  still works, one we've thrown out of does not.
+- Unit test `CameraFpsPinTest` covers the range-selection logic against the ranges this
+  Lenovo really reports.
+
+Measured on `xyz.wallpanel.app.kmb.dev` (Lenovo TB-J616F, Android 12), 30s windows.
+Each delivered frame emits two `Camera3-OutputStream` line groups (`format:17` and
+`format:35`), so frame rate is derived from timestamps, not raw line counts:
+
+| | before (pref 15) | after (default 10) |
+|---|---|---|
+| delivered frame rate | 15.0 fps (frames 66ms apart) | 10.0 fps (frames 100ms apart) |
+| `Camera3-OutputStream` lines/s | 88.0 | 60.4 |
+| `dumpsys meminfo` TOTAL PSS | 170.6 MB | 174.5 MB |
+
+Supported preview FPS ranges on this device, read from the hardware:
+`[10000,10000] [15000,15000] [15000,20000] [20000,20000] [5000,30000] [30000,30000]`
+
+**5fps is not reachable on this hardware**, which is why the default is 10. The lowest
+*fixed* range is 10fps; the only range with a 5fps floor is `[5000,30000]`, which floats
+to 30fps. So the reduction is 1.5x, not the 6x originally hoped for — 10fps is the sensor
+floor, and the pin holds it there. The measurements above were taken with the default at
+5, which `CameraFpsPin` resolved to `[10000,10000]`; a default of 10 resolves to the same
+range, so the numbers are unchanged and the UI no longer advertises an unachievable rate.
+No frame-level throttling was added: it would cut detection CPU but leave the HAL, power
+draw and log noise untouched, and the sensor is already at its floor.
+
+The Camera FPS preference is a free-text `EditTextPreference`, not a fixed option list, so
+nothing advertises unachievable values — but any number can be typed, and `CameraFpsPin`
+maps whatever is entered onto the nearest supported ceiling.
+
+**Memory did not improve** (170.6 → 174.5 MB PSS, within run-to-run noise). The
+hypothesis that capture rate drives the renderer memory pressure is not supported.
+
+Also noted: `setting_camera_processinginterval` (default 500ms) is defined in resources
+but read by no Kotlin code — a dead preference, left alone as out of scope.
+
+**PROMOTED** as 0.12.0 Build 0-kmb.3 (versionCode 12003).
+
+Verification was originally blocked: `smoke-renderer-crash.sh` could not run against the
+`.dev` app, which cannot obtain a WebView renderer on this tablet. That blocker was
+resolved separately by moving the renderer test onto the production app (see that entry);
+this branch was then re-verified against the signed release artifact.
+
+- `scripts/smoke-device.sh`: PASS
+- `scripts/smoke-renderer-crash.sh` (prod-based, idle wait intact): PASS, 4/4 cycles on
+  the signed versionCode 12003 candidate
+
+For the record, the dev app's renderer fault was investigated and ruled out as unrelated
+to this change — it reproduced identically on unmodified master, and a camera-only diff
+cannot affect WebView renderer processes. Screen-asleep, screensaver config, a reboot, the
+production app holding a renderer slot, and system-wide WebView breakage were all
+eliminated. The cause is unexplained and deliberately closed; see CLAUDE.md.
+
+
+### 2026-08-30 — Replace adb-device.sh's mdns fallback with a port scan
+
+`scripts/adb-device.sh` fell back to `adb mdns services` when the pinned `<ip>:5555` was
+unreachable after a tablet reboot. That path can never work in this container: mDNS relies
+on multicast, which does not cross the Docker bridge, so it always returned zero services.
+It failed closed (correct) but read as functional while being dead code.
+
+Replaced with a bounded parallel port scan over `30000-60999` (Android assigns wireless
+debugging a port from the ephemeral range), using bash's `/dev/tcp` — this container has
+no `ping`, `nc` or `nmap`. 200 concurrent probes at a 0.3s timeout, wrapped in a 90s hard
+cap so it cannot hang a capture loop; worst case (every port dropped) is ~47s. Open ports
+are then verified serially with `adb connect` + `get-state`, since an open port is not
+necessarily adbd, and failed candidates are disconnected so they don't linger in
+`adb devices`. On success it re-pins 5555 via `adb tcpip` so the fast path works again.
+Structure, fail-closed contract, stdout-is-the-serial convention and the `SMOKE_SERIAL`
+bypass are all unchanged.
+
+Verified against the live tablet: the full 30000-60999 sweep completed in **14s** and
+found port **37159**, which `adb connect` + `get-state` confirmed as a real device. (The
+5555 pin happened to be live again by then, so the resolver itself took the 0.14s fast
+path; the scan was verified directly against the same device rather than as a fallback.)
+No port is hardcoded — 42049 from the earlier reboot was already gone by this run, which
+is exactly why discovery has to be dynamic.
+
+CLAUDE.md now documents the port-scan approach and why mDNS must not be reinstated.
 
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
