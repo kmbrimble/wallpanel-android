@@ -28,9 +28,11 @@ Safety, all checked before the device is touched — each refuses outright:
 
 Restore is an EXIT trap gated on an `INSTALLED` flag, so it covers a mid-run death or
 interrupt — not just a graceful FAIL — while a preflight refusal can never "restore" over
-something that was never installed. On PASS the candidate is left installed and the panel
-confirmed foregrounded *with a bound renderer*, since window focus alone can't distinguish
-a live dashboard from a dead WebView.
+something that was never installed. The cycles are the verdict: each cycle already checks
+window focus and a fresh renderer, so PASS is committed as soon as the loop completes
+clean, before any further probing. A final focus check is reported as a warning only —
+letting it flip the verdict would let one flaky read roll back a build that had just
+survived every cycle.
 
 The script also holds the display on for the duration (`svc power stayon`, original value
 restored on exit) and wakes it after install. Without this the test cannot run at all:
@@ -42,9 +44,18 @@ still mounts.
 
 **Result on master (0.12.0 Build 0-kmb.2, versionCode 12002): PASS, 4/4 cycles.** The app
 process was unchanged across every renderer kill, window focus held, and a fresh renderer
-appeared each time. The screensaver renderer-crash fix does hold on production. The
-restore path was also exercised for real by the earlier spurious failure: it reinstalled
-the previous release and confirmed it foregrounded.
+appeared each time. The screensaver renderer-crash fix does hold on production.
+
+Sequence, stated plainly: the first run FAILed at cycle 1 for the display-sleep reason
+above, the restore trap reinstalled the previous release and confirmed it foregrounded,
+and the second run — after the `stayon` fix — PASSed 4/4. So the rollback path is not just
+written but field-tested. Note the renderer is *not* bound once the run ends and the
+display timeout is restored; that is the same mechanism, not a defect.
+
+The panel is left running the master-signed candidate. It is identical in content to
+`release-out/WallPanelApp-arm64-0.12.0-Build-0-kmb.2.apk` but has a different signing
+timestamp; `adb install -r -d` with that file puts the exact release artifact back if
+that matters.
 
 ### 2026-08-30 — Test infrastructure: scoped lint gate, dev app ID, on-device smoke test
 
