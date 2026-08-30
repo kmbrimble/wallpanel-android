@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### 2026-08-30 — Make the logcat capture idempotent and self-restarting
+
+The continuous capture had died twice in one day for the same reason: it runs as a plain
+background process, so a container restart kills it and nothing brings it back. That left
+no record of how the panel behaves in normal use — exactly the evidence needed to tell
+whether renderer crashes still happen organically now that the fix is verified.
+
+- `logcat-capture.sh` now guards on a PID file in `logs/capture.pid`, verified through
+  `/proc` (`ps` is not installed in this container) and matched against the command line
+  so PID reuse can't produce a false positive. Running it twice is a no-op, which is what
+  makes a start hook safe.
+- It kills its `adb logcat` child on exit. Killing only the supervisor previously left an
+  orphaned reader still appending to its file; the next start then ran a *second* reader
+  against the same device, doubling the write rate and splitting the record across two
+  files. This was observed for real while testing, not theorised.
+- Signal handling: a trap that only cleaned up let bash resume the loop afterwards, so the
+  supervisor survived its own SIGTERM having already deleted its PID file — and the next
+  start, seeing no owner, ran a second supervisor. Also observed for real. `INT`/`TERM` now
+  exit explicitly.
+- `--status` reports whether a capture is live and which file it's writing.
+- `.claude/settings.json` adds a `SessionStart` hook that fires the script unconditionally;
+  the PID guard makes that safe.
+
+**Caveat, stated rather than buried:** the hook restores the capture when a Claude session
+starts in this project — it does not make the capture survive a container restart on its
+own. Nothing in the container can: there is no cron, systemd or supervisord, and the
+container's own start-up is not editable from inside. This shortens the outage from
+"until someone notices" to "until the next session", which is the best available here.
+
+Not addressed: the logs are unbounded. The 11:01-13:00 capture alone was 501MB (~250MB/h,
+~6GB/day) and nothing rotates or expires them. Disk is fine for now (597G free) but this
+will need retention.
+
 ### 2026-08-30 — Run the renderer-crash test against the production app
 
 `scripts/smoke-renderer-crash.sh` now takes a signed production APK, installs it over

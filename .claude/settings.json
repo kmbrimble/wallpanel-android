@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /projects/wallpanel && nohup setsid ./logcat-capture.sh >/dev/null 2>&1 & disown; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
