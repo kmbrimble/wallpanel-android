@@ -180,3 +180,25 @@ doesn't always hold.
 - No app code changed in this session; `feature/test-infrastructure` was merged to
   `master` first (unchanged, pre-approved), and this work is on
   `feature/renderer-crash-repro`, pushed but not merged.
+
+### 2026-08-30 — Fix screensaver WebView's unhandled renderer crash
+
+Plan (branch `feature/screensaver-renderer-crash`, stacked on
+`feature/renderer-crash-repro`):
+- `ScreenSaverView.kt`: attach a crash-handling `WebViewClient` (matching
+  `InternalWebClient`'s `onRenderProcessGone` semantics) to `screenSaverWebView`
+  unconditionally in `init()`, not just inside `loadWebPage()` — debug builds only
+  force clock-mode (`hasClockScreenSaver = true`, `webScreenSaver` defaults `false`),
+  which never calls `loadWebPage()`, so the WebView the repro actually crashes has no
+  client attached in any mode today. Per advisor: dismiss the screensaver rather than
+  rebuild its WebView in place, since `DialogUtils.showScreenSaver`/
+  `hideScreenSaverDialog` already discard and freshly re-inflate the whole dialog
+  (including the WebView) on every show/hide cycle — rebuilding in place would just
+  reimplement what dismiss+re-show already does for free.
+- Delete `CustomWebView.kt` and `WebClientRenderWrapper.kt` (separate commit): both
+  confirmed dead by repository-reader — zero live references anywhere in the
+  codebase, the only mention of the latter is a commented-out line inside the former.
+- Verify with `scripts/smoke-renderer-crash.sh`, both with and without the 35s idle
+  wait, across multiple cycles; then `scripts/smoke-device.sh` for regression.
+- Release: version bump `-kmb.1` → `-kmb.2`, build/sign the arm64-v8a split per
+  CLAUDE.md. Do not install to the production panel.
