@@ -89,7 +89,10 @@ get_pid() {
 }
 
 device_time() {
-    timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell date '+%m-%d %H:%M:%S.000' 2>/dev/null | tr -d '\r'
+    # Must be a single quoted argument for the REMOTE shell -- an unquoted local
+    # invocation lets adb rejoin "+%m-%d" and "%H:%M:%S.000" as separate argv
+    # entries, so the device only sees "+%m-%d" and date silently drops the rest.
+    timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell "date '+%m-%d %H:%M:%S.000'" 2>/dev/null | tr -d '\r'
 }
 
 check_crash_buffer() {
