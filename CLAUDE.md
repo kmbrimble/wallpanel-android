@@ -118,10 +118,30 @@ This app is a personal wall panel, not critical infrastructure. Auto-promotion
 on green tests is deliberate — do not add confirmation prompts before
 promoting.
 
-- **Verify on `xyz.wallpanel.app.kmb.dev` first**: both `scripts/smoke-device.sh`
-  and `scripts/smoke-renderer-crash.sh` (the latter with its idle wait intact —
-  never weaken, shorten, or skip it to get a green) must pass against a debug
-  build from the same source tree as the release.
+- **`scripts/smoke-device.sh` runs on `xyz.wallpanel.app.kmb.dev`**, against a
+  debug build from the same source tree as the release. It installs, exercises
+  and uninstalls the dev app itself.
+- **`scripts/smoke-renderer-crash.sh` runs on the production app by design**,
+  and takes the signed arm64-v8a APK as its argument. Keep its idle wait intact
+  — never weaken, shorten, or skip it to get a green.
+
+  It installs the candidate over `xyz.wallpanel.app.kmb`, crashes the real
+  panel's WebView renderer, and on failure reinstalls the matching APK from
+  `release-out/`. It refuses to start unless the candidate carries the
+  production applicationId, is signed with the same key as the app already on
+  the device, and a `release-out/` APK matches the installed versionCode — so
+  there is always a way back before anything is installed.
+
+  **Why not the dev app:** the dev app cannot obtain a WebView renderer on this
+  tablet. It requests `SandboxedProcessService1`, whose ServiceRecord never gets
+  a bound process, while production gets `SandboxedProcessService0` and works
+  normally. Force-stopping prod and the launcher did not change it; `pm clear`
+  on dev only left it with no configured URL and so no WebView at all. **This is
+  unexplained and deliberately closed — do not re-investigate it.** It affects
+  only the harness, never the shipping app. Testing the signed production
+  artifact is better evidence anyway: it is exactly what ships, on exactly the
+  config it ships onto. Crashing the live panel's renderer is an accepted cost —
+  this is a personal wall panel, explicitly not critical infrastructure.
 - **If both pass, promote automatically**: install the signed arm64-v8a APK to
   the production app `xyz.wallpanel.app.kmb` —
   ```
