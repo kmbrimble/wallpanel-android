@@ -87,6 +87,28 @@ signed APK release, since those are harder to unwind.
 - When advisor's recommendation is not followed, say so and why in the
   handback.
 
+## Release signing
+
+`assembleProdRelease` produces per-ABI split APKs plus a universal one. **Sign
+and install the `arm64-v8a` split, not the universal APK** — our tablet is
+arm64-v8a only, and the split is 19.6MB against the universal's 36.1MB for the
+same install. Build tools live at `/root/.android-sdk/build-tools/34.0.0/`.
+
+Verified signing invocation:
+
+```
+zipalign -p -f 4 <unsigned-arm64-v8a.apk> <aligned.apk>
+apksigner sign --ks /projects/wallpanel-release.jks --ks-key-alias wallpanel \
+  --ks-pass file:/projects/.env.keystore-pass --out <signed.apk> <aligned.apk>
+apksigner verify --print-certs --verbose <signed.apk>
+```
+
+- The keystore password lives at `/projects/.env.keystore-pass`, **outside the
+  repo** — never move it, or a copy of it, into the repo or commit it anywhere.
+- `apksigner sign` also emits a `<signed.apk>.idsig` sidecar file — this is a
+  Play-specific artifact (APK Signature Scheme v4). **Do not attach it to
+  releases**; only the signed `.apk` itself.
+
 ## Deploy and verify
 
 After a signed prod release APK is built and verified (`apksigner verify`),
