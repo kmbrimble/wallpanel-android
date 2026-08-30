@@ -32,10 +32,8 @@
 -dontwarn okio.**
 
 # HiveMQ / Netty (already below)
-# Firebase / Crashlytics
 -keepattributes SourceFile,LineNumberTable
 -keep public class * extends java.lang.Exception
--dontwarn com.google.firebase.**
 
 # Glide
 -keep public class * implements com.bumptech.glide.module.GlideModule
