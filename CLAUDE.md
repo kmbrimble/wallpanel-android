@@ -109,24 +109,29 @@ apksigner verify --print-certs --verbose <signed.apk>
   Play-specific artifact (APK Signature Scheme v4). **Do not attach it to
   releases**; only the signed `.apk` itself.
 
-## Deploy and verify
+## Deploy and verify — release policy
 
-After a signed prod release APK is built and verified (`apksigner verify`),
-install it on the wall tablet automatically as the default last step of the
-release flow — do not wait to be asked, and do not just hand back the APK
-path:
+This app is a personal wall panel, not critical infrastructure. Auto-promotion
+on green tests is deliberate — do not add confirmation prompts before
+promoting.
 
-```
-adb -s 192.168.0.52:5555 install -d <signed-apk-path>
-```
-
-- The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
+- **Verify on `xyz.wallpanel.app.kmb.dev` first**: both `scripts/smoke-device.sh`
+  and `scripts/smoke-renderer-crash.sh` (the latter with its idle wait intact —
+  never weaken, shorten, or skip it to get a green) must pass against a debug
+  build from the same source tree as the release.
+- **If both pass, promote automatically**: install the signed arm64-v8a APK to
+  the production app `xyz.wallpanel.app.kmb` —
+  ```
+  adb -s 192.168.0.52:5555 install -r <signed-arm64-v8a.apk>
+  ```
+  The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
   `adb connect 192.168.0.52:5555` first if it isn't already listed in
   `adb devices`).
-- `-d` allows a version/signature downgrade install; harmless to include even
-  when not strictly needed.
-- Skip the auto-install only when there's an explicit reason not to: the user
-  says not to install, the applicationId/signature would silently replace an
-  app they didn't ask to replace, the tablet isn't reachable, or the release
-  is explicitly a dry run / hold. In those cases, say so and hand back the
-  APK path instead.
+- **If either script fails, do not promote.** Report and stop.
+- Keep every promoted APK at `release-out/WallPanelApp-arm64-<versionName>.apk`
+  and attach it to its GitHub release. **Never delete older ones.**
+- **Rollback (manual, by the user only)**:
+  ```
+  adb install -r -d release-out/<older>.apk
+  ```
+  The `-d` flag is required — adb refuses a lower versionCode without it.
