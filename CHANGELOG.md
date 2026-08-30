@@ -193,6 +193,14 @@ this branch was then re-verified against the signed release artifact.
 - `scripts/smoke-renderer-crash.sh` (prod-based, idle wait intact): PASS, 4/4 cycles on
   the signed versionCode 12003 candidate
 
+**Action still needed on the panel.** Post-promotion the panel measures 14.8 fps, not 10:
+changing an XML default does nothing where a value is already persisted, and prod has
+`setting_camera_fps` stored as 15 from before. It is a release build, so its shared_prefs
+cannot be written over adb. Set **Camera FPS to 10** in the app's Camera Settings to pick
+up the new rate. This also confirms `CameraFpsPin` is live on production: 15 requested
+resolves to the fixed `[15000,15000]` range and delivers 14.8 fps, exactly as the
+selection logic predicts.
+
 For the record, the dev app's renderer fault was investigated and ruled out as unrelated
 to this change — it reproduced identically on unmodified master, and a camera-only diff
 cannot affect WebView renderer processes. Screen-asleep, screensaver config, a reboot, the
