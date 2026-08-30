@@ -24,11 +24,11 @@ import kotlin.math.abs
 /**
  * Pins the sensor preview frame rate after a [CameraSource] has started.
  *
- * [CameraSource.Builder.setRequestedFps] only picks the *closest* supported range, which on this
- * hardware means a wide variable range (e.g. [5000,30000]) that the HAL floats up to its maximum in
- * good light -- requesting 5fps still delivered ~20fps measured. Choosing the range by its ceiling
- * and writing it back directly is what actually reduces frames delivered, and with them the CPU,
- * power and log cost of motion detection.
+ * [CameraSource.Builder.setRequestedFps] only picks the *closest* supported range by an
+ * undocumented min+max metric, which can land on a wide variable range (e.g. [5000,30000]) that the
+ * HAL floats up to its maximum in good light. Choosing the range by its ceiling and writing it back
+ * directly is what actually reduces frames delivered, and with them the CPU, power and log cost of
+ * motion detection.
  *
  * ponytail: reflects into CameraSource's private Camera because GMS Vision exposes no way to set a
  * preview FPS range. Upgrade path is CameraX/Camera2, which is deliberately out of scope here.

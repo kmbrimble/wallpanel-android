@@ -26,6 +26,11 @@ class CameraFpsPinTest {
     }
 
     @Test
+    fun `the shipped default of 10fps lands on this hardware's lowest fixed range`() {
+        assertArrayEquals(intArrayOf(10000, 10000), CameraFpsPin.chooseRange(lenovoRanges, 10f))
+    }
+
+    @Test
     fun `picks an exact fixed match when the hardware offers one`() {
         assertArrayEquals(intArrayOf(15000, 15000), CameraFpsPin.chooseRange(lenovoRanges, 15f))
         assertArrayEquals(intArrayOf(30000, 30000), CameraFpsPin.chooseRange(lenovoRanges, 30f))
