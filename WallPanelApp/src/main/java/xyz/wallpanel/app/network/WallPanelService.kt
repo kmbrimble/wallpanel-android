@@ -817,7 +817,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         try {
             val pInfo: PackageInfo =
                 applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            version = pInfo.versionName
+            version = pInfo.versionName ?: ""
         } catch (e: PackageManager.NameNotFoundException) {
             e.printStackTrace()
         }
@@ -852,7 +852,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         try {
             val pInfo: PackageInfo =
                 applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            version = pInfo.versionName
+            version = pInfo.versionName ?: ""
         } catch (e: PackageManager.NameNotFoundException) {
             e.printStackTrace()
         }

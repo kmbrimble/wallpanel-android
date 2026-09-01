@@ -59,7 +59,7 @@ android {
             option("--release", "17")
         }
     }
-    compileSdk 34
+    compileSdk 35
     lint {
         // Gate release builds on lintVital, which only checks Fatal-severity issues
         // (broken manifests, missing resources, invalid references) by design — not the
@@ -164,11 +164,8 @@ dependencies {
 
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
-    // Versions below were capped by minSdk 19 when feature/dependency-sweep wrote
-    // them; minSdk is now 26 (feature/minsdk-raise merged) so a further re-sweep to
-    // current stable follows in a separate commit.
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.legacy:legacy-support-v13:1.0.0'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
     implementation 'androidx.legacy:legacy-preference-v14:1.0.0'
@@ -182,10 +179,9 @@ dependencies {
     implementation 'com.google.mlkit:barcode-scanning:17.2.0'
     implementation 'com.google.mlkit:face-detection:16.1.6'
 
-    // Navigation. Capped by minSdk 19: 2.8.0+ pulls in navigation-runtime-android
-    // requiring minSdk 24. Current stable unlocked by feature/minsdk-raise.
-    implementation 'androidx.navigation:navigation-fragment-ktx:2.7.7'
-    implementation 'androidx.navigation:navigation-ui-ktx:2.7.7'
+    // Navigation
+    implementation 'androidx.navigation:navigation-fragment-ktx:2.10.0'
+    implementation 'androidx.navigation:navigation-ui-ktx:2.10.0'
 
     // RxJava
     implementation 'io.reactivex.rxjava2:rxjava:2.2.19'
