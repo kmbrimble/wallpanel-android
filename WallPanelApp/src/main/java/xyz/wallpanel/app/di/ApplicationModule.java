@@ -19,19 +19,16 @@ package xyz.wallpanel.app.di;
 import android.app.Application;
 import android.content.Context;
 
-import xyz.wallpanel.app.WallPanel;
-
 import javax.inject.Singleton;
 
-import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
+import dagger.hilt.InstallIn;
+import dagger.hilt.components.SingletonComponent;
 
 @Module
+@InstallIn(SingletonComponent.class)
 abstract class ApplicationModule {
-
-    @Binds
-    abstract Application application(WallPanel baseApplication);
 
     @Provides
     @Singleton

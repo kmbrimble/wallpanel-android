@@ -46,11 +46,12 @@ import xyz.wallpanel.app.ui.views.SettingsCodeView
 import xyz.wallpanel.app.utils.DateUtils
 import xyz.wallpanel.app.utils.DateUtils.SECONDS_VALUE
 import xyz.wallpanel.app.utils.ScreenUtils
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 import javax.inject.Inject
 
 
+@AndroidEntryPoint
 class SettingsFragment : BaseSettingsFragment() {
 
     @Inject
@@ -139,7 +140,6 @@ class SettingsFragment : BaseSettingsFragment() {
     }
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
     }
 

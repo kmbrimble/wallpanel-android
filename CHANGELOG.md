@@ -46,6 +46,55 @@ settings sub-screens, About, browser activity, live camera view) since a missed
 `@AndroidEntryPoint` compiles clean and only fails at runtime with null fields — no
 automated check catches that.
 
+### BLOCKED — 2026-09-02 — dagger.android -> Hilt migration hits a build-tooling wall
+
+All code changes from the plan above were made (`WallPanel` -> `@HiltAndroidApp`,
+`BrowserActivityNative`/`SettingsActivity`/`LiveCameraActivity` -> `@AndroidEntryPoint`,
+all 8 `BaseSettingsFragment` leaves -> `@AndroidEntryPoint`, `WallPanelService` ->
+`@AndroidEntryPoint`, `DetectionViewModel` -> `@HiltViewModel` + `by viewModels()`,
+`ApplicationModule`/`ActivityModule` -> `@InstallIn(SingletonComponent::class)`,
+`ApplicationComponent`/`AndroidBindingModule`/`DaggerViewModelFactory`/`ViewModelKey`/
+`DaggerViewModelInjectionModule`/`ApplicationScope`/`ActivityScope`/
+`ServiceSubcomponent`/`ServicesModule.java` all deleted).
+
+**Confirmed hard blocker, not a code bug — advisor's predicted risk turned out to be
+the real one.** The Hilt Gradle plugin (2.59.2, paired with Dagger 2.59.2) applies
+without error and registers its tasks (`hiltAggregateDeps*`, `hiltJavaCompile*`,
+`hiltSync*`), but `kaptProdDebugKotlin` fails on every entry point with `[Hilt]
+Expected @AndroidEntryPoint to have a value. Did you forget to apply the Gradle
+Plugin?`. Inspected the generated kapt stub directly
+(`build/tmp/kapt3/stubs/prodDebug/.../WallPanel.java`): the annotation is emitted as
+literal `@dagger.hilt.android.HiltAndroidApp()` with an empty value — the Hilt Kotlin
+compiler plugin that's supposed to fill that value in during Kotlin compilation never
+ran, or its output never reached the kapt stub-generation task. Same result whether
+invoked via `compileProdDebugKotlin`, `assembleProdDebug`, or
+`hiltAggregateDepsProdDebug` directly — not a task-ordering fluke.
+
+**Root cause, to the extent verifiable without upstream source access:** this project
+runs `android.newDsl=false` + `android.builtInKotlin=false` (gradle.properties:36-37),
+restoring the legacy AGP variant API and classic `kotlin-android` plugin specifically
+so kapt keeps working under AGP 9 — a combination CLAUDE.md already documented as
+necessary but unusual. The Hilt Gradle plugin's value-injection mechanism appears to
+depend on Kotlin/AGP wiring that this dual opt-out disrupts. No configuration flag in
+Hilt's public Gradle DSL was found to force the transform to run independently of that
+wiring.
+
+**Per the feature brief's own instruction, stopping here rather than fighting it.**
+This is a real, reproducible finding: Hilt 2.59.2 does not currently work in this
+project's build under `android.newDsl=false`. All migration code is committed on
+`feature/hilt-migration` (not merged to `master`) for whoever picks this back up.
+Options going forward, none attempted:
+1. Wait for kapt->KSP to become viable for this project generally (closed avenue today
+   per CLAUDE.md, but Hilt's own KSP path might behave differently — untested, KSP was
+   explicitly out of scope for this feature anyway).
+2. File/search for this exact failure against `google/dagger` and AGP 9's `newDsl`
+   flag — may already be a known, tracked incompatibility.
+3. Try an older Hilt/Dagger pairing to see if the value-injection mechanism changed
+   between versions — not attempted; no evidence yet that it's version-specific rather
+   than AGP-9-specific.
+
+Not promoted, not merged. `master` is untouched.
+
 ### 2026-09-02 — Post-minSdk cleanup tail (0.12.0 Build 0-kmb.7)
 
 Five items unlocked by the minSdk 19->26 raise (kmb.6), plus the previously-unmerged

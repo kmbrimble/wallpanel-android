@@ -36,6 +36,7 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleObserver
+import dagger.hilt.android.AndroidEntryPoint
 import xyz.wallpanel.app.databinding.ActivityBrowserBinding
 import xyz.wallpanel.app.network.ConnectionLiveData
 import xyz.wallpanel.app.ui.fragments.CodeBottomSheetFragment
@@ -50,6 +51,7 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 
 
+@AndroidEntryPoint
 class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClientCallback {
 
     private lateinit var webView: WebView

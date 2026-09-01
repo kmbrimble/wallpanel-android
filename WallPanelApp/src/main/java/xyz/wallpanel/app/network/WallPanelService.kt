@@ -40,7 +40,7 @@ import com.koushikdutta.async.http.body.StringBody
 import com.koushikdutta.async.http.server.AsyncHttpServer
 import com.koushikdutta.async.http.server.AsyncHttpServerResponse
 import com.koushikdutta.async.util.Charsets
-import dagger.android.AndroidInjection
+import dagger.hilt.android.AndroidEntryPoint
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
@@ -82,6 +82,7 @@ import javax.inject.Inject
 
 
 // TODO move this to internal class within application, no longer run as service
+@AndroidEntryPoint
 class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     @Inject
@@ -146,8 +147,6 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         super.onCreate()
 
         Timber.d("onCreate")
-
-        AndroidInjection.inject(this)
 
         startForeground()
 

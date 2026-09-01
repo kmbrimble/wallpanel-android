@@ -22,6 +22,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import android.hardware.Camera
 import android.util.Log
+import dagger.hilt.android.lifecycle.HiltViewModel
 import xyz.wallpanel.app.modules.CameraCallback
 import xyz.wallpanel.app.modules.CameraReader
 import xyz.wallpanel.app.persistence.Configuration
@@ -33,6 +34,7 @@ import javax.inject.Inject
 /**
  * Created by Michael Ritchie on 6/28/18.
  */
+@HiltViewModel
 class DetectionViewModel @Inject
 constructor(application: Application, private val configuration: Configuration,
             private val cameraReader: CameraReader) : AndroidViewModel(application) {

@@ -38,9 +38,10 @@ import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.LiveCameraActivity
 import xyz.wallpanel.app.ui.activities.SettingsActivity
 import xyz.wallpanel.app.utils.CameraUtils
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 
+@AndroidEntryPoint
 class CameraSettingsFragment : BaseSettingsFragment() {
 
     private var cameraListPreference: ListPreference? = null
@@ -56,7 +57,6 @@ class CameraSettingsFragment : BaseSettingsFragment() {
     var cameraList = ArrayList<CameraUtils.Companion.CameraList>()
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }

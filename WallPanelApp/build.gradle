@@ -20,7 +20,7 @@ plugins {
     id 'kotlin-parcelize'
     id 'kotlin-kapt' // Allows for Kotlin annotation processors
     //id 'androidx.navigation.safeargs.kotlin'
-    //id 'dagger.hilt.android.plugin'
+    id 'dagger.hilt.android.plugin'
 }
 
 def versionMajor = 0
@@ -200,12 +200,9 @@ dependencies {
     implementation 'com.squareup.okhttp3:logging-interceptor:3.4.1'
     implementation 'com.squareup.okhttp3:okhttp:3.12.13'
 
-    // Dagger 2.52+ for Kotlin 2.0 metadata support
-    implementation "com.google.dagger:dagger:$versions.dagger"
-    kapt "com.google.dagger:dagger-compiler:$versions.dagger"
-    implementation "com.google.dagger:dagger-android-support:$versions.dagger"
-    implementation "com.google.dagger:dagger-android:$versions.dagger"
-    kapt "com.google.dagger:dagger-android-processor:$versions.dagger"
+    // Hilt (ships in lockstep with Dagger; paired at the same version)
+    implementation "com.google.dagger:hilt-android:$versions.dagger"
+    kapt "com.google.dagger:hilt-android-compiler:$versions.dagger"
 
     // MQTT
     implementation 'com.hivemq:hivemq-mqtt-client:1.3.2'

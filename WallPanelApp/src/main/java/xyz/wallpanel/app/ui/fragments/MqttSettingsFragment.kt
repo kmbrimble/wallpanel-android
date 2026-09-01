@@ -28,9 +28,10 @@ import androidx.preference.ListPreference
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.network.MQTTOptions
 import xyz.wallpanel.app.ui.activities.SettingsActivity
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+@AndroidEntryPoint
 class MqttSettingsFragment : BaseSettingsFragment(), SharedPreferences.OnSharedPreferenceChangeListener  {
 
     @Inject
@@ -54,7 +55,6 @@ class MqttSettingsFragment : BaseSettingsFragment(), SharedPreferences.OnSharedP
     }
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }

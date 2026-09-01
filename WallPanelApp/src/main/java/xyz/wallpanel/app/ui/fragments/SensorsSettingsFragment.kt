@@ -30,15 +30,15 @@ import android.view.View
 import androidx.navigation.Navigation
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class SensorsSettingsFragment : BaseSettingsFragment() {
 
     private var sensorsPreference: SwitchPreference? = null
     private var mqttPublishFrequency: EditTextPreference? = null
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }

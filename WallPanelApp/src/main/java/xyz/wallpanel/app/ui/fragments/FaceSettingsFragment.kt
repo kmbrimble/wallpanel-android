@@ -29,8 +29,9 @@ import android.widget.Toast
 import androidx.navigation.Navigation
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class FaceSettingsFragment : BaseSettingsFragment() {
 
     private var faceDetectionPreference: SwitchPreference? = null
@@ -39,7 +40,6 @@ class FaceSettingsFragment : BaseSettingsFragment() {
     private var faceRotationPreference: SwitchPreference? = null
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }

@@ -17,12 +17,13 @@
 package xyz.wallpanel.app.ui.activities
 
 import android.Manifest
-import androidx.lifecycle.ViewModelProvider
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import android.view.Gravity
 import android.view.MenuItem
@@ -33,16 +34,16 @@ import xyz.wallpanel.app.modules.CameraCallback
 import xyz.wallpanel.app.persistence.Configuration
 import xyz.wallpanel.app.ui.DetectionViewModel
 import xyz.wallpanel.app.ui.views.CameraSourcePreview
-import dagger.android.support.DaggerAppCompatActivity
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 import xyz.wallpanel.app.databinding.ActivityLiveCameraBinding
 import javax.inject.Inject
 
-class LiveCameraActivity : DaggerAppCompatActivity() {
+@AndroidEntryPoint
+class LiveCameraActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLiveCameraBinding
-    @Inject lateinit var viewModelFactory: ViewModelProvider.Factory
-    private lateinit var viewModel: DetectionViewModel
+    private val viewModel: DetectionViewModel by viewModels()
     @Inject lateinit var configuration: Configuration
 
     private var updateHandler: Handler? = null
@@ -83,8 +84,6 @@ class LiveCameraActivity : DaggerAppCompatActivity() {
         if(configuration.hardwareAccelerated) {
             window.setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
         }
-        viewModel = ViewModelProvider(this, viewModelFactory).get(DetectionViewModel::class.java)
-
         // Check for the camera permission before accessing the camera.
         val rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         if (rc == PackageManager.PERMISSION_GRANTED) {

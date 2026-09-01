@@ -21,13 +21,15 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
+import androidx.appcompat.app.AppCompatActivity
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.persistence.Configuration
 import xyz.wallpanel.app.utils.DialogUtils
-import dagger.android.support.DaggerAppCompatActivity
+import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-class SettingsActivity : DaggerAppCompatActivity() {
+@AndroidEntryPoint
+class SettingsActivity : AppCompatActivity() {
 
     @Inject
     lateinit var configuration: Configuration

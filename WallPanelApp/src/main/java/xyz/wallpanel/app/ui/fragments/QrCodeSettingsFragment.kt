@@ -26,14 +26,14 @@ import android.view.View
 import androidx.navigation.Navigation
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class QrCodeSettingsFragment : BaseSettingsFragment() {
 
     private var qrCodePreference: SwitchPreference? = null
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }

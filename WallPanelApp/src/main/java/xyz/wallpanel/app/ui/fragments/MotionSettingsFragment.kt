@@ -29,8 +29,9 @@ import android.widget.Toast
 import androidx.navigation.Navigation
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
-import dagger.android.support.AndroidSupportInjection
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MotionSettingsFragment : BaseSettingsFragment() {
 
     private var motionDetectionPreference: SwitchPreference? = null
@@ -40,7 +41,6 @@ class MotionSettingsFragment : BaseSettingsFragment() {
     private var motionLumaPreference: EditTextPreference? = null
 
     override fun onAttach(context: Context) {
-        AndroidSupportInjection.inject(this)
         super.onAttach(context)
         setHasOptionsMenu(true)
     }
