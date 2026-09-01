@@ -80,7 +80,7 @@ class LiveCameraActivity : DaggerAppCompatActivity() {
             supportActionBar!!.title = getString(R.string.title_camera_test)
         }
 
-        if(configuration.hardwareAccelerated && Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
+        if(configuration.hardwareAccelerated) {
             window.setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
         }
         viewModel = ViewModelProvider(this, viewModelFactory).get(DetectionViewModel::class.java)

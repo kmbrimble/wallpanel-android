@@ -1,42 +1,35 @@
 package xyz.wallpanel.app.utils
 
-import android.annotation.TargetApi
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
-import android.os.Build
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
 import java.util.*
 
-@TargetApi(Build.VERSION_CODES.N_MR1)
 class LauncherShortcuts {
     companion object {
 
         fun createShortcuts(context: Context) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-                val shortcutManager = context.getSystemService(ShortcutManager::class.java)
-                shortcutManager!!.dynamicShortcuts = Arrays.asList(settingsShortcut(context, 0))
-            }
+            val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+            shortcutManager!!.dynamicShortcuts = Arrays.asList(settingsShortcut(context, 0))
         }
 
         /**
          * If we ever want to customize the shortcut options
          */
         fun updateShortcutStatus(context: Context, searchEnabled: Boolean) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-                val shortcutManager = context.getSystemService(ShortcutManager::class.java)
-                shortcutManager!!.removeAllDynamicShortcuts()
-                val list = LinkedList<ShortcutInfo>()
+            val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+            shortcutManager!!.removeAllDynamicShortcuts()
+            val list = LinkedList<ShortcutInfo>()
 
-                if (searchEnabled) {
-                    list.add(settingsShortcut(context, list.size))
-                }
-                if (!list.isEmpty()) {
-                    shortcutManager.dynamicShortcuts = list
-                }
+            if (searchEnabled) {
+                list.add(settingsShortcut(context, list.size))
+            }
+            if (!list.isEmpty()) {
+                shortcutManager.dynamicShortcuts = list
             }
         }
 
