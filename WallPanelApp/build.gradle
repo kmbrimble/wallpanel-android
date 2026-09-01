@@ -132,7 +132,7 @@ android {
             buildConfigField "String", BASE_ENVIRONMENT, '"PROD_ENVIRONMENT"'
             applicationId "xyz.wallpanel.app"
             applicationIdSuffix ".kmb"
-            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.5"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.6"
             buildConfigField 'Integer', 'CODE', '1234'
             buildConfigField 'String', 'HASS_URL', '""'
             buildConfigField 'String', 'BROKER', '""'
