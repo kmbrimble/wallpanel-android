@@ -385,7 +385,7 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
     }
 
     private fun configureWebViewClient() {
-        webView.webViewClient = InternalWebClient(resources = resources, callback = this, configuration)
+        webView.webViewClient = InternalWebClient(resources = resources, callback = this, configuration = configuration, dialogUtils = dialogUtils)
     }
 
     private fun initWebPageLoad() {

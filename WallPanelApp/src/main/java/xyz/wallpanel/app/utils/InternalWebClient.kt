@@ -13,13 +13,13 @@ import xyz.wallpanel.app.R
 import xyz.wallpanel.app.persistence.Configuration
 import xyz.wallpanel.app.ui.views.WebClientCallback
 import java.util.*
-import javax.inject.Inject
 
-open class InternalWebClient(val resources: Resources, private val callback: WebClientCallback, val configuration: Configuration) :
-    WebViewClient() {
-
-    @Inject
-    lateinit var dialogUtils: DialogUtils
+open class InternalWebClient(
+    val resources: Resources,
+    private val callback: WebClientCallback,
+    val configuration: Configuration,
+    private val dialogUtils: DialogUtils
+) : WebViewClient() {
 
     private var pageLoaded = false
     private var currentUrl = ""
