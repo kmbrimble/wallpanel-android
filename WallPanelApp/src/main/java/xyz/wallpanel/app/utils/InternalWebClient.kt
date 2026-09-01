@@ -1,10 +1,8 @@
 package xyz.wallpanel.app.utils
 
-import android.annotation.TargetApi
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.net.http.SslError
-import android.os.Build
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -109,17 +107,13 @@ open class InternalWebClient(val resources: Resources, private val callback: Web
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.O)
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            super.onRenderProcessGone(view, detail)
-            Timber.w("WebView render process gone (crashed=%s)", detail.didCrash())
-            if (!callback.isFinishing()) {
-                callback.onWebViewRenderProcessGone(view)
-            }
-            return true
+        super.onRenderProcessGone(view, detail)
+        Timber.w("WebView render process gone (crashed=%s)", detail.didCrash())
+        if (!callback.isFinishing()) {
+            callback.onWebViewRenderProcessGone(view)
         }
-        return super.onRenderProcessGone(view, detail)
+        return true
     }
 
 
