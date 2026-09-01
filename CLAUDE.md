@@ -55,6 +55,38 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
 
+## Toolchain notes — closed avenues and deprecation deadlines
+
+**kapt→KSP migration for Dagger is blocked upstream — closed, don't reopen.**
+Tried on `feature/kapt-to-ksp` (2026-09-01, branch deleted after folding its one
+real change into `feature/dependency-sweep`). `dagger-android-processor` has no
+KSP build (`google/dagger#4044`, open upstream), and KSP's
+`@ContributesAndroidInjector` validation requires `AndroidProcessor` on the same
+processor path as `dagger-compiler` — splitting the two across kapt/KSP fails at
+build time with unresolved bindings in `AndroidBindingModule.kt`. Verified by
+build, not assumed. Revisit only if Dagger ships KSP support for
+`dagger-android-processor`, or if `dagger-android` is removed from this codebase
+entirely (a real DI rewrite, not a toolchain swap). Until then this project stays
+on kapt, and the "Kapt currently doesn't support language version 2.0+" fallback
+warning is expected, not a bug.
+
+**AGP 9's DSL/Kotlin opt-out flags expire in AGP 10.0 (mid-2026).** If the AGP
+version in `build.gradle` is ever bumped to 9.x or later while this project still
+needs kapt (see above), `gradle.properties` needs both:
+```
+android.builtInKotlin=false
+android.newDsl=false
+```
+`android.newDsl=false` restores the old DSL/variant API that `kotlin-android`
+(classic KGP, required for kapt) depends on; `android.builtInKotlin=false` keeps
+Kotlin compilation off AGP's built-in path so kapt can run. **Both opt-outs are
+removed in AGP 10.0** — confirmed via AGP's own docs (`developer.android.com/build/r/new-dsl`
+and `developer.android.com/build/migrate-to-built-in-kotlin`), not a blog post.
+AGP 10.0 is dated "mid-2026" in the `newDsl` docs. When AGP 10.0 ships, this
+project cannot use kapt-based Dagger with a current AGP unless the kapt→KSP
+migration above has unblocked by then — check the Dagger KSP status again at
+that point, since staying on an AGP 9.x tail indefinitely is not a real option.
+
 ## Standing constraint
 
 **We build and sign our own APKs.** Never install a prebuilt APK/AAB from a
