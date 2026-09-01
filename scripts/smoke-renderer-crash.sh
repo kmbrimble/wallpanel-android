@@ -3,6 +3,20 @@
 #
 # Usage: scripts/smoke-renderer-crash.sh <signed-prod-arm64-apk>
 #
+# *** NOT PART OF THE RELEASE PATH. ATTENDED USE ONLY. ***
+#
+# Retired from routine releases on 2026-09-01. Run this only when you are
+# actively working on WebView code AND standing near the tablet, because a
+# single injected crash reproducibly wedges the panel (measured 2026-08-30 and
+# 2026-09-01) and recovery needs physical access to re-enable wireless
+# debugging. Two consecutive evenings ended with a dead panel and a walk to the
+# wall.
+#
+# Routine releases use scripts/smoke-device.sh plus scripts/panel-render-probe.sh,
+# which cover the ordinary case without provoking the wedge. Log analysis over
+# ~2.4 days found zero organic renderer crashes against 32 injected, so this
+# script has been the only thing that has ever wedged the panel.
+#
 # This installs the candidate APK over xyz.wallpanel.app.kmb -- the real wall
 # panel -- runs its crash cycles there, and restores the previous release on
 # failure. That is deliberate; see "Why production" below.
@@ -13,14 +27,16 @@
 # <pid>`, which reproduced the exact "Render process ... wasn't handled by
 # all associated webviews" abort documented in REVIEW.md. A single crash
 # only reproduces the abort intermittently (whether the screensaver's
-# unprotected WebView happens to be attached at the time), so this loops
-# several cycles and fails on the first cycle that shows the app didn't
-# survive cleanly.
+# unprotected WebView happens to be attached at the time), so this loops its
+# cycles (one by default, SMOKE_RENDERER_CYCLES to go deeper) and fails on the
+# first cycle that shows the app didn't survive cleanly.
 #
 # PASS means: the app process survived N consecutive renderer kills, kept
-# window focus on the main activity, and a fresh renderer ServiceRecord
-# appeared after each kill. On PASS the candidate is left installed and
-# running. On FAIL (or any unexpected exit) the previous release-out/ APK is
+# window focus on the main activity, a fresh renderer ServiceRecord appeared
+# after each kill, AND the render probe confirmed the dashboard is actually on
+# screen. That last clause matters: the first three were all true of a panel
+# sitting dead on Home Assistant's loading screen. On PASS the candidate is
+# left installed and running. On FAIL (or any unexpected exit) the previous release-out/ APK is
 # reinstalled and relaunched, so a failed test never leaves a dead panel.
 #
 # Why production, not the .dev app:
@@ -54,7 +70,12 @@ BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-/root/.android-sdk/build-tools/34.0.0}"
 AAPT2="$BUILD_TOOLS/aapt2"
 APKSIGNER="$BUILD_TOOLS/apksigner"
 ADB_TIMEOUT=15
-CYCLES="${SMOKE_RENDERER_CYCLES:-4}"
+# One crash is enough to prove onRenderProcessGone is handled and the app
+# survives; four multiplied wedge risk fourfold for no extra signal. Analysis of
+# ~2.4 days of capture found zero organic renderer crashes against 32 injected,
+# so this script has been the only thing that ever wedged the panel. Raise
+# SMOKE_RENDERER_CYCLES deliberately for a deeper run.
+CYCLES="${SMOKE_RENDERER_CYCLES:-1}"
 SETTLE_SECONDS=5
 # REVIEW.md: the screensaver's WebView has no onRenderProcessGone handler, and
 # only mounts after configuration.inactivityTime (default 30000ms) of no touch
@@ -317,6 +338,81 @@ if [[ ${#FAILURES[@]} -eq 0 ]]; then
     # once the trap restores the display timeout and the screen sleeps, so a
     # missing renderer here is expected, not a defect.
     FINAL_FOCUS=$(launch_and_check)
+
+    # --- render probe --------------------------------------------------------
+    # Passing the assertions above is NOT sufficient. Measured twice (2026-08-30,
+    # 2026-09-01): the app process alive, window focus held and a fresh renderer
+    # bound were ALL true while the panel sat permanently on Home Assistant's
+    # loading screen. Those three assertions cannot see a wedge. This can.
+    #
+    # There is deliberately no automatic recovery. An escalating ladder was built
+    # and measured on 2026-09-01: `am start -S` failed, `am force-stop` + start
+    # failed (0 for 2 across both attempts ever made), and `adb reboot` left the
+    # panel probably-recovered but adb unreachable, needing wireless debugging
+    # re-enabled by hand. Recovery from this state is not automatable, so the
+    # script says so plainly instead of pretending otherwise.
+    PROBE="$SCRIPT_DIR/panel-render-probe.sh"
+
+    distinct_app_windows() {
+        timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell dumpsys window windows 2>/dev/null \
+            | grep -oE "Window\{[0-9a-f]+ u0 $APP_ID/" | sort -u | wc -l
+    }
+
+    # The probe reads rendering from capture size plus frame delta, so the clock
+    # screensaver looks "static" and would be misread as a wedge. Distinguish it
+    # structurally rather than by pixels: measured on this panel in both
+    # directions, 1 distinct app window == dashboard exposed (probe ~1.4MB,
+    # RENDERING) and 2 == screensaver dialog on top (probe ~41KB, static).
+    #
+    # That invariant is also the tap-safety rule: only tap when there are 2
+    # windows, so a dialog is always present to consume the touch and it can
+    # never reach and actuate a Home Assistant control.
+    dismiss_screensaver_if_up() {
+        if [[ "$(distinct_app_windows)" -ge 2 ]]; then
+            timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell input tap 1900 1150 >/dev/null 2>&1
+            sleep 3
+        fi
+    }
+
+    render_ok() {
+        dismiss_screensaver_if_up
+        SMOKE_SERIAL="$SERIAL" bash "$PROBE" "$1" >/dev/null 2>&1
+    }
+
+    # A healthy reload after a renderer crash has never been timed on this panel,
+    # so probing once immediately would misreport a still-loading page. Re-check
+    # the screensaver every iteration: it re-fires after ~30s idle.
+    render_ok_within() {
+        local label=$1; shift
+        local waited=0 t
+        for t in "$@"; do
+            sleep $(( t - waited )); waited=$t
+            if render_ok "${label}_${t}s"; then return 0; fi
+        done
+        return 1
+    }
+
+    if ! render_ok_within postcrash 10 30 60 120; then
+        echo
+        echo "RESULT: FAIL"
+        echo "*** THE PANEL IS WEDGED AND NEEDS PHYSICAL ATTENTION ***"
+        echo
+        echo "The renderer crash was handled correctly by the app -- process survived,"
+        echo "focus held, a fresh renderer bound -- but the dashboard is not rendering."
+        echo "This is the known single-crash wedge (reproduced 2026-08-30 and 2026-09-01)."
+        echo
+        echo "Recovery is NOT automatable and this script will not attempt it:"
+        echo "  am start -S            has never worked"
+        echo "  am force-stop + start  has never worked"
+        echo "  adb reboot             recovers the panel but leaves adb unreachable,"
+        echo "                         needing wireless debugging re-enabled by hand"
+        echo
+        echo "Go to the tablet. Do NOT run pm clear -- it wipes the Home Assistant config."
+        echo "After recovering, confirm with: scripts/panel-render-probe.sh"
+        exit 1
+    fi
+    echo "Render probe: the dashboard is rendering."
+
     echo "RESULT: PASS"
     echo "$APP_ID (versionCode $CANDIDATE_VC) survived $CYCLES consecutive renderer crashes with window focus held and a fresh renderer each time."
     if [[ -n "$FINAL_FOCUS" ]]; then
