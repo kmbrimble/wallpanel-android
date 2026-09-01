@@ -41,7 +41,7 @@ import dagger.hilt.components.SingletonComponent;
 
 @Module
 @InstallIn(SingletonComponent.class)
-class ActivityModule {
+public class ActivityModule {
 
     @Provides
     static DialogUtils providesDialogUtils(Application application) {

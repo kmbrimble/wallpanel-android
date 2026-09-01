@@ -46,54 +46,44 @@ settings sub-screens, About, browser activity, live camera view) since a missed
 `@AndroidEntryPoint` compiles clean and only fails at runtime with null fields — no
 automated check catches that.
 
-### BLOCKED — 2026-09-02 — dagger.android -> Hilt migration hits a build-tooling wall
+### 2026-09-02 — dagger.android -> Hilt migration: build unblocked
 
-All code changes from the plan above were made (`WallPanel` -> `@HiltAndroidApp`,
-`BrowserActivityNative`/`SettingsActivity`/`LiveCameraActivity` -> `@AndroidEntryPoint`,
-all 8 `BaseSettingsFragment` leaves -> `@AndroidEntryPoint`, `WallPanelService` ->
-`@AndroidEntryPoint`, `DetectionViewModel` -> `@HiltViewModel` + `by viewModels()`,
-`ApplicationModule`/`ActivityModule` -> `@InstallIn(SingletonComponent::class)`,
-`ApplicationComponent`/`AndroidBindingModule`/`DaggerViewModelFactory`/`ViewModelKey`/
-`DaggerViewModelInjectionModule`/`ApplicationScope`/`ActivityScope`/
-`ServiceSubcomponent`/`ServicesModule.java` all deleted).
+An earlier version of this entry recorded the migration as BLOCKED: `kaptProdDebugKotlin`
+failed on all 13 entry points with `[Hilt] Expected @AndroidEntryPoint to have a value.
+Did you forget to apply the Gradle Plugin?`, the kapt stub showing a literal empty
+`@HiltAndroidApp()`. Investigation and resolution:
 
-**Confirmed hard blocker, not a code bug — advisor's predicted risk turned out to be
-the real one.** The Hilt Gradle plugin (2.59.2, paired with Dagger 2.59.2) applies
-without error and registers its tasks (`hiltAggregateDeps*`, `hiltJavaCompile*`,
-`hiltSync*`), but `kaptProdDebugKotlin` fails on every entry point with `[Hilt]
-Expected @AndroidEntryPoint to have a value. Did you forget to apply the Gradle
-Plugin?`. Inspected the generated kapt stub directly
-(`build/tmp/kapt3/stubs/prodDebug/.../WallPanel.java`): the annotation is emitted as
-literal `@dagger.hilt.android.HiltAndroidApp()` with an empty value — the Hilt Kotlin
-compiler plugin that's supposed to fill that value in during Kotlin compilation never
-ran, or its output never reached the kapt stub-generation task. Same result whether
-invoked via `compileProdDebugKotlin`, `assembleProdDebug`, or
-`hiltAggregateDepsProdDebug` directly — not a task-ordering fluke.
+- **Not google/dagger#4756.** That issue is the Hilt plugin silently no-op'ing under
+  AGP's built-in-Kotlin `com.android.legacy-kapt`. Checked with an init script: this
+  build applies classic `kotlin-kapt` (`Kapt3GradleSubplugin`, `KaptWithoutKotlincTask`)
+  and no AGP kapt plugin, so `android.builtInKotlin=false` is doing its job.
+- **Real secondary bug, fixed:** the Hilt plugin manages its own kapt configuration and
+  validates for the current `com.google.dagger:hilt-compiler` artifact; we had declared
+  the older `hilt-android-compiler` name, which failed that check. Swapped. Necessary
+  but not sufficient — the empty-value symptom persisted.
+- **Actual mechanism** (from decompiling `hilt-android-gradle-plugin` 2.59.2): the
+  plugin passes the processor its `disableAndroidSuperclassValidation` /
+  `projectType` arguments via `AndroidComponentsExtension.onVariants(...)` — AGP's
+  New Variant API, which `android.newDsl=false` (needed here to keep kapt alive under
+  AGP 9) disables. The Hilt tasks register, but the arguments never reach the classic
+  kapt task.
+- **Fix:** pass those two arguments by hand in `kapt { arguments {} }`
+  (`WallPanelApp/build.gradle`), with a comment saying why. Cost: 3 lines.
+- **Proved, not assumed, that the bytecode transform ran** — a green build here would
+  otherwise mean nothing, since a missing transform leaves `@Inject` fields null at
+  runtime with no compile error. `dexdump` on the prodDebug arm64 APK: all 13 entry
+  points extend their generated `Hilt_<Leaf>` class, and each `Hilt_` class extends
+  the original parent (`BaseBrowserActivity` x1, `BaseSettingsFragment` x8,
+  `AppCompatActivity` x2, `LifecycleService`, `Application`). 17 `Hilt_` classes in
+  the dex. Chain intact end to end.
+- **One source bug surfaced once validation passed:** `ActivityModule` was
+  package-private; the generated root component lives in `xyz.wallpanel.app` and
+  emitted `<error>` for it. Made `public`.
 
-**Root cause, to the extent verifiable without upstream source access:** this project
-runs `android.newDsl=false` + `android.builtInKotlin=false` (gradle.properties:36-37),
-restoring the legacy AGP variant API and classic `kotlin-android` plugin specifically
-so kapt keeps working under AGP 9 — a combination CLAUDE.md already documented as
-necessary but unusual. The Hilt Gradle plugin's value-injection mechanism appears to
-depend on Kotlin/AGP wiring that this dual opt-out disrupts. No configuration flag in
-Hilt's public Gradle DSL was found to force the transform to run independently of that
-wiring.
+The no-plugin fallback (explicit `@AndroidEntryPoint(Base::class)` + hand-written
+`: Hilt_X()` superclasses, 13 sites) was mapped and advisor-checked but not needed.
 
-**Per the feature brief's own instruction, stopping here rather than fighting it.**
-This is a real, reproducible finding: Hilt 2.59.2 does not currently work in this
-project's build under `android.newDsl=false`. All migration code is committed on
-`feature/hilt-migration` (not merged to `master`) for whoever picks this back up.
-Options going forward, none attempted:
-1. Wait for kapt->KSP to become viable for this project generally (closed avenue today
-   per CLAUDE.md, but Hilt's own KSP path might behave differently — untested, KSP was
-   explicitly out of scope for this feature anyway).
-2. File/search for this exact failure against `google/dagger` and AGP 9's `newDsl`
-   flag — may already be a known, tracked incompatibility.
-3. Try an older Hilt/Dagger pairing to see if the value-injection mechanism changed
-   between versions — not attempted; no evidence yet that it's version-specific rather
-   than AGP-9-specific.
-
-Not promoted, not merged. `master` is untouched.
+Unit tests 6/6 green. Device verification and promotion follow below.
 
 ### 2026-09-02 — Post-minSdk cleanup tail (0.12.0 Build 0-kmb.7)
 

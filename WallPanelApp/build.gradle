@@ -58,6 +58,13 @@ android {
         javacOptions {
             option("--release", "17")
         }
+        // Hilt's Gradle plugin normally injects these via AGP's new Variant API,
+        // which android.newDsl=false (needed for kapt under AGP 9) disables — so
+        // the flags never reach the classic kotlin-kapt task. Passed by hand.
+        arguments {
+            arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
+            arg("dagger.hilt.android.internal.projectType", "APP")
+        }
     }
     compileSdk 35
     lint {
@@ -200,9 +207,12 @@ dependencies {
     implementation 'com.squareup.okhttp3:logging-interceptor:3.4.1'
     implementation 'com.squareup.okhttp3:okhttp:3.12.13'
 
-    // Hilt (ships in lockstep with Dagger; paired at the same version)
+    // Hilt (ships in lockstep with Dagger; paired at the same version).
+    // The Gradle plugin auto-wires the kapt dependency, but only recognizes the
+    // current "hilt-compiler" artifact name, not the older "hilt-android-compiler" -
+    // declaring the latter left @AndroidEntryPoint's value permanently unfilled.
     implementation "com.google.dagger:hilt-android:$versions.dagger"
-    kapt "com.google.dagger:hilt-android-compiler:$versions.dagger"
+    kapt "com.google.dagger:hilt-compiler:$versions.dagger"
 
     // MQTT
     implementation 'com.hivemq:hivemq-mqtt-client:1.3.2'
