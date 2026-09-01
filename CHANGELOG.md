@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — Post-minSdk cleanup tail (0.12.0 Build 0-kmb.7)
+
+Five items unlocked by the minSdk 19->26 raise (kmb.6), plus the previously-unmerged
+`feature/dependency-sweep` branch folded in as part of the same pass:
+
+- Merged `feature/dependency-sweep` (Gradle 9.7.1, AGP 9.3.2, Kotlin 2.2.21, Dagger 2.59.2),
+  then re-swept AndroidX to current stable now that minSdk 26 lifts the version caps that
+  branch had recorded: appcompat 1.8.0, material 1.14.0, navigation 2.10.0, lifecycle 2.11.0.
+  navigation 2.10.0 forced compileSdk 34->35 (targetSdk unchanged at 34, per policy).
+- Removed 5 dead `SDK_INT >= O` (API 26) branches, now always-true: `BaseBrowserActivity`
+  startup, `ScreenSaverView`/`InternalWebClient`'s `onRenderProcessGone`, and
+  `NotificationUtils`' channel/notification builders. Deleted the resulting dead
+  `getAndroidNotification()` fallback.
+- Dropped `legacy-support-v13`/`legacy-support-v4`/`legacy-preference-v14`; replaced
+  `androidx.legacy.widget.Space` with plain `Space` in `fragment_about.xml`. Made two
+  transitive dependencies explicit (`SwipeRefreshLayout`, `LocalBroadcastManager`) that were
+  riding along via the removed legacy artifacts.
+- Removed obsolete `android.enableJetifier=true`.
+- Bumped `constraintlayout` 2.1.4 -> 2.2.2 (was pinned only for minSdk 19).
+- Fixed `InternalWebClient.dialogUtils`: passed through the constructor instead of relying on
+  never-populated `@Inject` field injection (the class is manually constructed, not built
+  through Dagger) - was a live `UninitializedPropertyAccessException` on any SSL error.
+- CLAUDE.md's cleanup-tail notes corrected: previously cited 8+1 SDK_INT sites and
+  dependency-sweep's post-bump versions instead of master's actual state.
+
+Lint delta: 0 Fatal (unchanged), 9 Error (was 8 - new `KotlinNullnessAnnotation`/
+`NotificationPermission`/`ForegroundServiceType` findings surfaced by the AGP bump, none
+Fatal, not chased), 387 Warning (`ObsoleteSdkInt` 14->6 from the SDK_INT cleanup).
+
 ### 2026-09-02 — Fix the renderer-crash wedge (0.12.0 Build 0-kmb.5)
 
 A single injected renderer crash reproducibly wedged the panel: `onWebViewRenderProcessGone`
