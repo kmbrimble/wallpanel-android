@@ -18,7 +18,6 @@ package xyz.wallpanel.app.utils
 
 import android.content.Context
 import android.content.ContextWrapper
-import android.os.Build
 import android.provider.Settings
 import xyz.wallpanel.app.persistence.Configuration
 import timber.log.Timber
@@ -31,12 +30,10 @@ constructor(context: Context, private val configuration: Configuration): Context
         val useScreenBrightness = configuration.useScreenBrightness
         val canWriteSettings = canWriteScreenSetting()
         if(useScreenBrightness) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && canWriteSettings) {
+            if (canWriteSettings) {
                 setDeviceBrightnessControl(screenSaver)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && canWriteSettings.not()) {
-                restoreDeviceBrightnessControl()
             } else {
-                setDeviceBrightnessControl(screenSaver)
+                restoreDeviceBrightnessControl()
             }
         } else {
             restoreDeviceBrightnessControl()
@@ -146,10 +143,6 @@ constructor(context: Context, private val configuration: Configuration): Context
     }
 
     private fun canWriteScreenSetting(): Boolean {
-        var hasPermission = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            hasPermission = Settings.System.canWrite(applicationContext)
-        }
-        return hasPermission
+        return Settings.System.canWrite(applicationContext)
     }
 }

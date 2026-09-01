@@ -154,12 +154,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         // prepare the lock types we may use
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
 
-        //noinspection deprecation
-        partialWakeLock = if (Build.VERSION.SDK_INT > Build.VERSION_CODES.KITKAT) {
-            pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "wallPanel:partialWakeLock")
-        } else {
-            pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE, "wallPanel:partialWakeLock")
-        }
+        partialWakeLock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "wallPanel:partialWakeLock")
 
         // wifi lock
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -226,16 +221,9 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     private val isScreenOn: Boolean
         get() {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT_WATCH){
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                return powerManager.isScreenOn
-            }
-            else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH){
-                val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-                for (display in displayManager.displays){
-                    return display.state != Display.STATE_OFF
-                }
-                return false
+            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            for (display in displayManager.displays){
+                return display.state != Display.STATE_OFF
             }
             return false
         }
@@ -407,7 +395,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
     }
 
     private fun configureTextToSpeech() {
-        if (textToSpeechModule == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        if (textToSpeechModule == null) {
             textToSpeechModule = TextToSpeechModule(applicationContext)
             textToSpeechModule?.let {
                 lifecycle.addObserver(it)
@@ -534,7 +522,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     // Attempt to restart camera and any optional camera options such as motion and streaming
     private fun restartCamera() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && configuration.cameraPermissionsShown) {
+        if (configuration.cameraPermissionsShown) {
             configuration.cameraEnabled = true
             configureCamera()
             startHttp()
@@ -702,11 +690,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     // TODO we need to url decode incoming strings to support other languages
     private fun speakMessage(message: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            textToSpeechModule?.speakText(message)
-        } else {
-            sendAlertMessage("Text to Speech is not supported on this device's version of Android")
-        }
+        textToSpeechModule?.speakText(message)
     }
 
     // TODO temporarily wake screen

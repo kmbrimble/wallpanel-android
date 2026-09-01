@@ -21,7 +21,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.preference.SwitchPreference
 import androidx.core.app.ActivityCompat
@@ -131,11 +130,7 @@ class CameraSettingsFragment : BaseSettingsFragment() {
         }
         cameraListPreference?.isEnabled = false
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            if (ActivityCompat.checkSelfPermission(requireActivity().applicationContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                createCameraList()
-            }
-        } else {
+        if (ActivityCompat.checkSelfPermission(requireActivity().applicationContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             createCameraList()
         }
 
@@ -147,7 +142,7 @@ class CameraSettingsFragment : BaseSettingsFragment() {
         qrCodePreference = findPreference("button_key_qr_code")
         cameraTestPreference = findPreference("button_key_camera_test")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && activity != null) {
+        if (activity != null) {
             if (ActivityCompat.checkSelfPermission(requireActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && configuration.cameraEnabled) {
                 configuration.cameraEnabled = false
                 dialogUtils.showAlertDialog(requireActivity(), getString(R.string.dialog_no_camera_permissions))
@@ -183,7 +178,7 @@ class CameraSettingsFragment : BaseSettingsFragment() {
     }
 
     private fun requestCameraPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !configuration.cameraPermissionsShown) {
+        if (!configuration.cameraPermissionsShown) {
             if (PackageManager.PERMISSION_DENIED == ContextCompat.checkSelfPermission(requireActivity(), Manifest.permission.CAMERA)
                     || PackageManager.PERMISSION_DENIED == ContextCompat.checkSelfPermission(requireActivity(), android.Manifest.permission.READ_EXTERNAL_STORAGE)) {
                 configuration.cameraPermissionsShown = true

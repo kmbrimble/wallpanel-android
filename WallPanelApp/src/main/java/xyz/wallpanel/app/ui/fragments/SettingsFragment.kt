@@ -146,17 +146,15 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, intent: Intent?) {
         super.onActivityResult(requestCode, resultCode, intent)
         if (requestCode == PERMISSIONS_REQUEST_WRITE_SETTINGS) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (Settings.System.canWrite(requireActivity().applicationContext)) {
-                    screenBrightness?.isChecked = true
-                    configuration.useScreenBrightness = true
-                    Toast.makeText(requireContext(), getString(R.string.toast_screen_brightness_captured), Toast.LENGTH_SHORT).show()
-                    screenUtils.setScreenBrightnessLevels()
-                } else {
-                    Toast.makeText(requireActivity(), getString(R.string.toast_write_permissions_denied), Toast.LENGTH_LONG).show()
-                    configuration.useScreenBrightness = false
-                    screenBrightness?.isChecked = false
-                }
+            if (Settings.System.canWrite(requireActivity().applicationContext)) {
+                screenBrightness?.isChecked = true
+                configuration.useScreenBrightness = true
+                Toast.makeText(requireContext(), getString(R.string.toast_screen_brightness_captured), Toast.LENGTH_SHORT).show()
+                screenUtils.setScreenBrightnessLevels()
+            } else {
+                Toast.makeText(requireActivity(), getString(R.string.toast_write_permissions_denied), Toast.LENGTH_LONG).show()
+                configuration.useScreenBrightness = false
+                screenBrightness?.isChecked = false
             }
         }
     }
@@ -452,7 +450,7 @@ class SettingsFragment : BaseSettingsFragment() {
 
 
     private fun checkWriteSettings() {
-        if (!configuration.writeScreenPermissionsShown && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (!configuration.writeScreenPermissionsShown) {
             if (Settings.System.canWrite(requireActivity().applicationContext)) {
                 screenUtils.setScreenBrightnessLevels()
                 Toast.makeText(requireContext(), getString(R.string.toast_screen_brightness_captured), Toast.LENGTH_SHORT).show()

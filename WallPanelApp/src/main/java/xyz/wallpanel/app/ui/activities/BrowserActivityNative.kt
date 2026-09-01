@@ -220,9 +220,7 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
 
     override fun clearCache() {
         webView.clearCache(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().removeAllCookies(null)
-        }
+        CookieManager.getInstance().removeAllCookies(null)
     }
 
     override fun reload() {
@@ -256,9 +254,7 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
             webSettings?.userAgentString = userAgent
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webSettings?.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        }
+        webSettings?.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
     }
 
     override fun complete() {
@@ -477,18 +473,14 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
                 binding.launchSettingsFab.visibility = View.VISIBLE
                 binding.launchSettingsFab.backgroundTintList =
                     ContextCompat.getColorStateList(this, R.color.transparent)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    binding.launchSettingsFab.compatElevation = 0f
-                }
+                binding.launchSettingsFab.compatElevation = 0f
                 binding.launchSettingsFab.imageAlpha = 0
             }
             else -> {
                 binding.launchSettingsFab.visibility = View.VISIBLE
                 binding.launchSettingsFab.backgroundTintList =
                     ContextCompat.getColorStateList(this, R.color.colorAccent)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    binding.launchSettingsFab.compatElevation = 4f
-                }
+                binding.launchSettingsFab.compatElevation = 4f
                 binding.launchSettingsFab.imageAlpha = 180
             }
         }

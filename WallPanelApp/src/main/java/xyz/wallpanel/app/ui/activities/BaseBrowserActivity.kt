@@ -183,7 +183,7 @@ abstract class BaseBrowserActivity : DaggerAppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (configuration.hardwareAccelerated && Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
+        if (configuration.hardwareAccelerated) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED

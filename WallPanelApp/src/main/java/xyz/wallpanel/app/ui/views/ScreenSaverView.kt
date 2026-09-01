@@ -278,17 +278,13 @@ class ScreenSaverView : RelativeLayout {
         if (!TextUtils.isEmpty(userAgent)) {
             webSettings.userAgentString = userAgent
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        }
+        webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         Timber.d(webSettings.userAgentString)
     }
 
     private fun clearCache() {
         binding.screenSaverWebView.clearCache(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().removeAllCookies(null)
-        }
+        CookieManager.getInstance().removeAllCookies(null)
     }
 
     companion object {
