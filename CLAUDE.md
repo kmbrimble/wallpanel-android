@@ -55,6 +55,69 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
 
+## Planned-but-not-started work
+
+**Dagger.android → Hilt migration (scoped 2026-09-02, not started — no code, no branch).**
+Motivation: kapt→KSP for `dagger-android-processor` is a closed avenue (see below);
+Hilt supports KSP today and is Google's stated direction of travel, though there is
+no formal deprecation of `dagger.android` itself.
+
+- **Single-component risk: assessed and found ABSENT.** Hilt collapses all
+  activities into one component and all fragments into one; dagger.android's own
+  migration guide warns this can surface per-target assumptions. Checked and ruled
+  out here, for three reasons: `ActivityScope` is defined but applied nowhere (no
+  real per-activity scoping exists); all 15 `@ContributesAndroidInjector` methods
+  in `AndroidBindingModule.kt` take no `modules=` argument (each generated
+  per-target subcomponent is an empty shell); and `ActivityModule` is installed
+  directly in `ApplicationComponent`, not in any per-activity subcomponent — every
+  binding is already app-wide. The migration is semantically a no-op on this axis.
+  Do not re-derive this by re-reading the DI package; the finding is structural
+  and won't change unless someone adds real per-activity scoping first.
+- **The base-class trap.** `BaseBrowserActivity` and `BaseSettingsFragment` are
+  both `@ContributesAndroidInjector` targets themselves *and* the base class other
+  injected classes extend (seven fragments inherit from `BaseSettingsFragment`).
+  Under Hilt, only the concrete leaf class gets `@AndroidEntryPoint` — a base
+  class's `@Inject` fields are only populated when a leaf subclass triggers
+  injection. This compiles clean and fails at runtime (uninjected fields), not at
+  build time. Per-screen device verification is required when this migration
+  happens, not just a green build.
+- **Dead code found during the scoping pass, safe to delete whenever:**
+  `ServiceSubcomponent` and `ServicesModule.java` — both fully unreferenced;
+  `WallPanelService` is actually wired through `AndroidBindingModule` instead.
+- **Sequencing:** fold into the dependency re-sweep, so Dagger→Hilt dependency
+  churn happens once rather than twice. Independent of the minSdk raise.
+- **kapt payoff:** after Hilt, `dagger-compiler` is the last kapt processor in the
+  build (Glide's kapt compiler is dead weight — no `@GlideModule` exists in this
+  codebase, so it can be dropped regardless of Hilt) and Hilt itself supports KSP.
+  This means the AGP 10.0 opt-out deadline (see below) becomes fully closable by
+  this migration, not just reduced.
+
+**Post-minSdk-raise cleanup tail (actionable once `feature/minsdk-raise` merges —
+recorded together here so these don't stay scattered across branch notes).**
+
+- 8 `SDK_INT` sites intentionally left at the exact O(26) boundary by that
+  branch (its own scope was strictly below 26), plus one the sweep missed:
+  `NotificationUtils.java:416` still guards `createChannels()` with `SDK_INT >=
+  O` — always-true once minSdk is 26, found by code review, harmless but dead.
+- `androidx.legacy:legacy-support-v13`/`legacy-support-v4`/`legacy-preference-v14`
+  are retained solely because `androidx.legacy.widget.Space` is used at
+  `fragment_about.xml:43`. Replace that one view (a plain `Space` or layout
+  margin covers it) and all three legacy libraries can be dropped outright —
+  they're already terminal at 1.0.0, no newer version exists.
+- `android.enableJetifier=true` in `gradle.properties` triggers an AGP 9
+  deprecation warning and is almost certainly obsolete now. Flagged during the
+  dependency sweep but not removed, since removing it wasn't in that branch's
+  scope — verify no remaining dependency needs Jetifier, then delete.
+- `constraintlayout` is pinned at 2.1.4 only because nothing between it and
+  2.2.x declares `minSdk <= 19` — this is a minSdk-19 artifact, not a Kotlin or
+  AGP constraint, and needs re-checking once minSdk is 26.
+- The wider AndroidX re-sweep: `appcompat`, `material`, `navigation` and
+  `lifecycle` are all hardcoded version pins capped by minSdk 19 (see
+  `feature/dependency-sweep`'s handback in `modernisation.MD` for the exact
+  ceiling versions and why). **Merging the minSdk raise does NOT auto-unlock
+  them** — these are static pins, not ranges, so a deliberate post-merge
+  re-sweep of the AndroidX bumps is required to actually reach current stable.
+
 ## Toolchain notes — closed avenues and deprecation deadlines
 
 **kapt→KSP migration for Dagger is blocked upstream — closed, don't reopen.**
@@ -139,6 +202,18 @@ injection. Fix it properly when you are next in the WebView code — the likely
 shape is re-loading the page (not just rebuilding the WebView) once the new
 renderer is attached. Do not provoke it just to study it; that has cost two
 evenings and two trips to the tablet.
+
+## Open defect — InternalWebClient.dialogUtils is never injected
+
+`InternalWebClient.kt` declares `@Inject lateinit var dialogUtils: DialogUtils`,
+but the class is manually constructed (not built through Dagger) at
+`BrowserActivityNative.kt:396`. `dialogUtils` is read in `onReceivedSslError` —
+since it's never injected, that's a live `UninitializedPropertyAccessException` on
+any SSL error. Our HA instance is on plain HTTP so this path may never fire in
+practice, but it is a real live defect, not hypothetical. Fix is one line: pass
+`dialogUtils` through the constructor instead of relying on field injection. Fix
+whenever `InternalWebClient.kt` is next touched — not urgent enough to justify a
+standalone change.
 
 ## Liveness — the render probe, and what it does not cover
 
@@ -264,11 +339,28 @@ promoting.
   focus. Open, and unexplained.
 
 - **If `smoke-device.sh` and `panel-render-probe.sh` both pass, promote
-  automatically**: install the signed arm64-v8a APK to
-  the production app `xyz.wallpanel.app.kmb` —
-  ```
-  adb -s 192.168.0.52:5555 install -r <signed-arm64-v8a.apk>
-  ```
+  automatically** via `scripts/promote.sh <signed-arm64-v8a.apk>`. Do not run
+  a bare `adb install -r` to promote — see why below.
+
+  **`smoke-device.sh` + `panel-render-probe.sh` only clear the build for
+  promotion; they do not verify the promoted build itself.** Both run before
+  install, against the dev app and the still-running previous production
+  build respectively. A post-install check is mandatory because **`adb
+  install -r` does not restart the foreground app on this launcher** (found
+  promoting kmb.3, handled manually at the time, undocumented until now) — the
+  panel can keep showing the old build's UI, alive and rendering, while the
+  new APK sits installed but never loaded. A render probe run only
+  before install cannot catch a new build that shows a blank page; it would
+  promote green.
+
+  `scripts/promote.sh`: installs (`adb install -r`), force-stops and relaunches
+  the app (`am start -W`) so the new APK actually loads, then re-runs
+  `panel-render-probe.sh` against the running new build. If that post-install
+  probe fails, it rolls back automatically — `adb install -r -d` to the newest
+  other APK under `release-out/`, relaunches, and re-probes — and reports
+  loudly whether the rollback itself restored rendering. It refuses to
+  promote anything whose applicationId isn't exactly `xyz.wallpanel.app.kmb`.
+
   The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
   `adb connect 192.168.0.52:5555` first if it isn't already listed in
   `adb devices`).
