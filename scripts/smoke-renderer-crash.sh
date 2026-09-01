@@ -14,7 +14,7 @@
 # all associated webviews" abort documented in REVIEW.md. A single crash
 # only reproduces the abort intermittently (whether the screensaver's
 # unprotected WebView happens to be attached at the time), so this loops
-# several cycles and fails on the first cycle that shows the app didn't
+# its cycles (one by default) and fails on the first cycle that shows the app didn't
 # survive cleanly.
 #
 # PASS means: the app process survived N consecutive renderer kills, kept
@@ -54,7 +54,12 @@ BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-/root/.android-sdk/build-tools/34.0.0}"
 AAPT2="$BUILD_TOOLS/aapt2"
 APKSIGNER="$BUILD_TOOLS/apksigner"
 ADB_TIMEOUT=15
-CYCLES="${SMOKE_RENDERER_CYCLES:-4}"
+# One crash is enough to prove onRenderProcessGone is handled and the app
+# survives; four multiplied wedge risk fourfold for no extra signal. Analysis of
+# ~2.4 days of capture found zero organic renderer crashes against 32 injected,
+# so this script has been the only thing that ever wedged the panel. Raise
+# SMOKE_RENDERER_CYCLES deliberately for a deeper run.
+CYCLES="${SMOKE_RENDERER_CYCLES:-1}"
 SETTLE_SECONDS=5
 # REVIEW.md: the screensaver's WebView has no onRenderProcessGone handler, and
 # only mounts after configuration.inactivityTime (default 30000ms) of no touch
@@ -317,7 +322,124 @@ if [[ ${#FAILURES[@]} -eq 0 ]]; then
     # once the trap restores the display timeout and the screen sleeps, so a
     # missing renderer here is expected, not a defect.
     FINAL_FOCUS=$(launch_and_check)
+
+    # --- render probe + auto-recovery ---------------------------------------
+    # Passing the assertions above is NOT sufficient. On 2026-08-30 the app
+    # process was alive, window focus was held and a renderer was bound, while
+    # the panel sat permanently on Home Assistant's loading screen. All three
+    # assertions were true of a dead panel. Probe what is actually on screen.
+    #
+    # PASSED=1 is already set, so a wedge here does not roll back the candidate:
+    # the wedge is a pre-existing app defect that is present in current prod too,
+    # not a candidate regression, and reinstalling an older APK would not unwedge
+    # anything. But an unrecovered panel still exits non-zero -- never exit 0 on a
+    # panel we could not confirm is rendering.
+    PROBE="$SCRIPT_DIR/panel-render-probe.sh"
+
+    distinct_app_windows() {
+        timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell dumpsys window windows 2>/dev/null \
+            | grep -oE "Window\{[0-9a-f]+ u0 $APP_ID/" | sort -u | wc -l
+    }
+
+    # The probe detects rendering from capture size plus frame delta, so the
+    # clock screensaver reads as "static" and would trigger a spurious recovery.
+    # Distinguish it structurally rather than by pixels: measured on this panel in
+    # both directions, 1 distinct app window == dashboard exposed (probe 1.4MB,
+    # RENDERING) and 2 == screensaver dialog on top (probe 41KB, static).
+    #
+    # That invariant is also what makes the tap safe: we only ever tap when a
+    # dialog is covering the dashboard and will consume the touch, so it can
+    # never reach and actuate a Home Assistant control.
+    dismiss_screensaver_if_up() {
+        if [[ "$(distinct_app_windows)" -ge 2 ]]; then
+            timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell input tap 1900 1150 >/dev/null 2>&1
+            sleep 3
+        fi
+    }
+
+    render_ok() {
+        dismiss_screensaver_if_up
+        SMOKE_SERIAL="$SERIAL" bash "$PROBE" "$1" >/dev/null 2>&1
+    }
+
+    # A healthy reload after a renderer crash has never been timed on this panel,
+    # so a single probe right after the settle would read a legitimately
+    # still-loading page as a wedge and force-stop a panel that was coming good.
+    # Re-check the screensaver on every iteration: it re-fires after ~30s idle,
+    # including mid-window and after a recovery rung relaunches the app.
+    render_ok_within() {
+        local label=$1; shift
+        local waited=0 t
+        for t in "$@"; do
+            sleep $(( t - waited )); waited=$t
+            if render_ok "${label}_${t}s"; then return 0; fi
+        done
+        return 1
+    }
+
+    RECOVERED_BY=""
+    if render_ok_within postcrash 10 30 60 120; then
+        RECOVERED_BY="none needed"
+    else
+        log "WEDGED after renderer crash -- panel is not rendering. Escalating recovery."
+        log "recovery (a): am start -S $APP_ID/$LAUNCH_ACTIVITY"
+        timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell am start -S -n "$APP_ID/$LAUNCH_ACTIVITY" >/dev/null 2>&1
+        if render_ok_within recovery_a 15 45 90; then
+            RECOVERED_BY="(a) am start -S"
+        else
+            log "recovery (b): am force-stop then am start"
+            timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1
+            sleep 3
+            timeout "$ADB_TIMEOUT" adb -s "$SERIAL" shell am start -n "$APP_ID/$LAUNCH_ACTIVITY" >/dev/null 2>&1
+            if render_ok_within recovery_b 15 45 90; then
+                RECOVERED_BY="(b) force-stop + start"
+            else
+                log "recovery (c): adb reboot (never pm clear -- it would wipe the HA config)"
+                timeout "$ADB_TIMEOUT" adb -s "$SERIAL" reboot >/dev/null 2>&1
+                sleep 60
+                # The reboot drops the tcpip pin, so the old serial is stale.
+                NEW_SERIAL=""
+                for _ in $(seq 1 10); do
+                    NEW_SERIAL=$(wallpanel_resolve_adb_serial 2>/dev/null | tail -1)
+                    [[ -n "$NEW_SERIAL" ]] && break
+                    sleep 30
+                done
+                if [[ -z "$NEW_SERIAL" ]]; then
+                    echo
+                    echo "RESULT: FAIL"
+                    echo "The panel wedged after the renderer crash and did not recover via (a) or (b)."
+                    echo "A reboot was issued. The panel has PROBABLY recovered -- the app autostarts on"
+                    echo "boot -- but adb never came back, so this run could not verify it. The tablet"
+                    echo "needs PHYSICAL ATTENTION: re-enable Settings > Developer options > Wireless"
+                    echo "debugging, then run scripts/panel-render-probe.sh to confirm."
+                    exit 1
+                fi
+                SERIAL="$NEW_SERIAL"
+                log "device back at $SERIAL, waiting for $APP_ID"
+                for _ in $(seq 1 20); do
+                    [[ -n "$(get_pid)" ]] && break
+                    sleep 10
+                done
+                if render_ok_within recovery_c 20 60 120; then
+                    RECOVERED_BY="(c) reboot"
+                fi
+            fi
+        fi
+    fi
+
+    if [[ -z "$RECOVERED_BY" ]]; then
+        echo
+        echo "RESULT: FAIL"
+        echo "The panel wedged after the renderer crash and NONE of the recovery steps"
+        echo "restored it -- not am start -S, not force-stop, not a reboot."
+        echo "The panel needs PHYSICAL ATTENTION. Do not run pm clear: it wipes the HA config."
+        exit 1
+    fi
+
     echo "RESULT: PASS"
+    if [[ "$RECOVERED_BY" != "none needed" ]]; then
+        echo "*** WEDGED after the renderer crash -- recovered via $RECOVERED_BY ***"
+    fi
     echo "$APP_ID (versionCode $CANDIDATE_VC) survived $CYCLES consecutive renderer crashes with window focus held and a fresh renderer each time."
     if [[ -n "$FINAL_FOCUS" ]]; then
         echo "The candidate is left installed and foregrounded on $LAUNCH_ACTIVITY."

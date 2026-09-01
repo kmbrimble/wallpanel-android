@@ -84,17 +84,29 @@ Note that PSS comparisons across processes are easily invalidated by differing
 WebView count and renderer-crash history — both shift GL mtrack by hundreds of MB.
 Compare only samples with the same WebView count and similar uptime, and say so.
 
-## Known gap — the smoke scripts do not detect a hung app
+## Liveness — the render probe, and what it does not cover
 
-Neither `smoke-device.sh` nor `smoke-renderer-crash.sh` can tell a working panel from
-a functionally hung one. Both assert process liveness, window focus, and a bound
-renderer. On 2026-08-30 all three were true while the panel sat on a dead Home
-Assistant loading screen: the app process was alive and GCing, focus was held, and
-renderer 24949 was bound the entire time.
+Process liveness, window focus and a bound renderer are **not** sufficient to call the
+panel healthy. On 2026-08-30 all three were true while it sat permanently on a dead
+Home Assistant loading screen: the app was alive and GCing, focus was held, and
+renderer 24949 stayed bound throughout.
 
-This is a real coverage gap, deliberately **left open** — the open question is what a
-liveness check should actually assert (page-load completion? a DOM probe? the MQTT
-heartbeat?), and that has not been decided. Do not build one until it is.
+`scripts/panel-render-probe.sh` is the answer to that, and `smoke-renderer-crash.sh`
+runs it after its crash cycle. It decides whether the dashboard is really on screen
+from two signals — screencap size, and the byte delta between two captures 3s apart —
+which works because the dashboard carries live IR camera feeds. Read the script's
+header before trusting a verdict: it assumes those feeds, and it cannot tell the
+screensaver apart from a stuck page by size alone.
+
+The screensaver is distinguished **structurally**, not by pixels: 1 distinct app
+window means the dashboard is exposed, 2 means the screensaver dialog is on top.
+Measured in both directions on this panel. That invariant is also the tap-safety rule
+— only tap to dismiss when there are 2 windows, so a dialog is always there to consume
+the touch and it can never actuate a Home Assistant control.
+
+Still open, deliberately: an **out-of-band** liveness check that does not depend on
+adb or on a screenshot — the MQTT heartbeat is the obvious candidate, since it would
+catch a wedge while nobody is running a smoke script. Not built.
 
 ## Git workflow
 
