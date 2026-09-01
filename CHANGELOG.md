@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — Fix the renderer-crash wedge (0.12.0 Build 0-kmb.5)
+
+A single injected renderer crash reproducibly wedged the panel: `onWebViewRenderProcessGone`
+rebuilt the WebView correctly, but Home Assistant's frontend never re-initialised — the
+panel sat on HA's own loading screen indefinitely.
+
+**Root cause: not a missing reload.** `initWebPageLoad()` already reloaded the page on every
+rebuild; that part worked. The actual bug was in `BrowserActivityNative.configureWebSettings`:
+`WebSettings` was cached in an activity-lifetime field, assigned once behind an
+`if (webSettings == null)` guard. `WebSettings` is per-WebView-instance, not shared, so after
+`onWebViewRenderProcessGone` destroyed the old WebView and built a new one, every
+`javaScriptEnabled = true` / `domStorageEnabled = true` call kept mutating the destroyed
+WebView's settings object. The new WebView was left on Android's defaults — JavaScript and
+DOM storage both disabled — so HA's JS frontend never booted, while its CSS-driven loading
+spinner kept animating.
+
+**Fix:** `configureWebSettings` now reads `webView.settings` into a local `val` on every call
+instead of caching it. Checked for the same pattern elsewhere (any field holding a
+WebView-instance-owned object not re-established on rebuild) — found none; `webView` itself,
+both client objects, and `ScreenSaverView`'s separate WebView were all already correct.
+
+Verified with 3 consecutive `smoke-renderer-crash.sh` passes (35s idle wait intact),
+`smoke-device.sh`, and `panel-render-probe.sh`. Version bumped to `0.12.0 Build 0-kmb.5`
+(versionCode 12005) per the existing `+N`/`-kmb.N` bump convention in `build.gradle`.
+
 ### 2026-08-30 — Remove Firebase, Crashlytics and LeakCanary from the build
 
 There is no `google-services.json` in this project, so Firebase had nothing to talk to,

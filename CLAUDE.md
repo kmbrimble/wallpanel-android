@@ -179,29 +179,46 @@ Note that PSS comparisons across processes are easily invalidated by differing
 WebView count and renderer-crash history — both shift GL mtrack by hundreds of MB.
 Compare only samples with the same WebView count and similar uptime, and say so.
 
-## Open defect — a single renderer crash wedges the panel
+## Fixed defect — a single renderer crash wedged the panel (fixed 2026-09-02)
 
 Reproduced twice (2026-08-30, 2026-09-01, n=2) on `xyz.wallpanel.app.kmb`. One
-renderer crash, with the dashboard visible, permanently wedges the panel:
+renderer crash, with the dashboard visible, permanently wedged the panel:
 
-- `onWebViewRenderProcessGone` does its job — the WebView is rebuilt, `webView` is
-  VISIBLE and full-size, `progressView` is GONE, a fresh renderer binds, the app
-  process is unchanged and keeps window focus.
-- But **Home Assistant's own frontend never re-initialises**. The panel sits on
+- `onWebViewRenderProcessGone` did its job — the WebView was rebuilt, `webView` was
+  VISIBLE and full-size, `progressView` was GONE, a fresh renderer bound, the app
+  process was unchanged and kept window focus.
+- But **Home Assistant's own frontend never re-initialised**. The panel sat on
   HA's loading screen (logo + "A project from the Open Home Foundation"), spinner
   animating for ~5 minutes and then frozen. No self-recovery after 7 minutes.
-- Recovery is not automatable: `am start -S` and `am force-stop` + start have
-  never worked, and `adb reboot` recovers the panel but strands adb.
+
+**Root cause, found 2026-09-02: a stale-cache bug, not a missing reload.** The
+previously recorded hypothesis here ("the likely fix shape is re-loading the page,
+not just rebuilding the WebView") was wrong and is disproven by the code —
+`onWebViewRenderProcessGone` already called `initWebPageLoad()` →
+`loadWebViewUrl()` → `webView.loadUrl()` on the new WebView every time. The real
+bug: `BrowserActivityNative` cached `WebSettings` in an activity-lifetime field
+(`private var webSettings: WebSettings? = null`), assigned once in
+`configureWebSettings` behind an `if (webSettings == null)` guard. `WebSettings` is
+per-WebView-instance, not shared — so after a rebuild, every
+`javaScriptEnabled = true` / `domStorageEnabled = true` / etc. call kept mutating
+the **destroyed old WebView's** settings object, never touching the new one. The
+new WebView was left on Android defaults: JavaScript and DOM storage both
+disabled. HA is a JS SPA — the static loading-screen shell still rendered (its
+spinner is pure CSS, hence "animating"), but the frontend never booted, matching
+the symptom exactly. No other field in the codebase caches anything owned by the
+WebView instance (checked: `webView` itself, both client objects, and
+`ScreenSaverView`'s separate WebView, which already used a local val and has no
+rebuild path).
+
+**Fix:** `configureWebSettings` now uses a local `val webSettings = webView.settings`
+instead of the cached field — verified with `smoke-renderer-crash.sh` (3 consecutive
+passes, 35s idle wait intact), `smoke-device.sh`, and `panel-render-probe.sh`.
 
 **It does not appear to fire on its own.** Zero organic renderer crashes across
 ~2.4 days of capture, against 32 injected. The one organic renderer tombstone on
-record (08-26) is on the archived `xyz.wallpanel.app` build, not ours.
-
-So: real defect, running on the wall, but provoked only by our own crash
-injection. Fix it properly when you are next in the WebView code — the likely
-shape is re-loading the page (not just rebuilding the WebView) once the new
-renderer is attached. Do not provoke it just to study it; that has cost two
-evenings and two trips to the tablet.
+record (08-26) is on the archived `xyz.wallpanel.app` build, not ours. So this was
+a real defect, capable of wedging the panel, but never observed to trigger without
+deliberate crash injection.
 
 ## Open defect — InternalWebClient.dialogUtils is never injected
 

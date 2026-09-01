@@ -57,7 +57,6 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
     private var certPermissionsShown = false
     private var playlistHandler: Handler? = null
     private var codeBottomSheet: CodeBottomSheetFragment? = null
-    private var webSettings: WebSettings? = null
     private val calendar: Calendar = Calendar.getInstance()
     private val reconnectionHandler = Handler(Looper.getMainLooper())
     private var connectionLiveData: ConnectionLiveData? = null
@@ -232,32 +231,29 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
     @SuppressLint("SetJavaScriptEnabled")
     // TODO handle deprecated web settings
     override fun configureWebSettings(userAgent: String) {
-        if (webSettings == null) {
-            webSettings = webView.settings
-        }
-        webSettings?.javaScriptEnabled = true
-        webSettings?.domStorageEnabled = true
-        webSettings?.databaseEnabled = true
-        webSettings?.saveFormData = true
-        webSettings?.javaScriptCanOpenWindowsAutomatically = true
-        webSettings?.cacheMode = WebSettings.LOAD_NO_CACHE
-        webSettings?.allowFileAccess = true
-        webSettings?.allowFileAccessFromFileURLs = true
-        webSettings?.allowContentAccess = true
-        webSettings?.setSupportZoom(true)
-        webSettings?.loadWithOverviewMode = true
-        webSettings?.useWideViewPort = true
-        webSettings?.pluginState = WebSettings.PluginState.ON
-        webSettings?.setRenderPriority(WebSettings.RenderPriority.HIGH)
-        // webSettings?.cacheMode = WebSettings.LOAD_NO_CACHE;
-        webSettings?.mediaPlaybackRequiresUserGesture = false
+        val webSettings = webView.settings
+        webSettings.javaScriptEnabled = true
+        webSettings.domStorageEnabled = true
+        webSettings.databaseEnabled = true
+        webSettings.saveFormData = true
+        webSettings.javaScriptCanOpenWindowsAutomatically = true
+        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
+        webSettings.allowFileAccess = true
+        webSettings.allowFileAccessFromFileURLs = true
+        webSettings.allowContentAccess = true
+        webSettings.setSupportZoom(true)
+        webSettings.loadWithOverviewMode = true
+        webSettings.useWideViewPort = true
+        webSettings.pluginState = WebSettings.PluginState.ON
+        webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH)
+        webSettings.mediaPlaybackRequiresUserGesture = false
 
         if (userAgent.isNotEmpty()) {
-            webSettings?.userAgentString = userAgent
+            webSettings.userAgentString = userAgent
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webSettings?.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
     }
 
