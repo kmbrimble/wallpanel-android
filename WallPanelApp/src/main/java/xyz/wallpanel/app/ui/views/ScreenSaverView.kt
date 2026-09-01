@@ -17,11 +17,9 @@
 package xyz.wallpanel.app.ui.views
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.content.Context
 import android.content.DialogInterface
 import android.net.http.SslError
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -192,15 +190,11 @@ class ScreenSaverView : RelativeLayout {
     // so dismissing it is the direct equivalent of the main browser's WebView rebuild, without
     // reimplementing what dismiss+re-show already does for free.
     private open inner class ScreenSaverWebClient : WebViewClient() {
-        @TargetApi(Build.VERSION_CODES.O)
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                super.onRenderProcessGone(view, detail)
-                Timber.w("Screensaver WebView render process gone (crashed=%s)", detail.didCrash())
-                closeView()
-                return true
-            }
-            return super.onRenderProcessGone(view, detail)
+            super.onRenderProcessGone(view, detail)
+            Timber.w("Screensaver WebView render process gone (crashed=%s)", detail.didCrash())
+            closeView()
+            return true
         }
     }
 

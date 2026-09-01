@@ -25,11 +25,7 @@ import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.BitmapFactory;
-import android.os.Build;
 
-import androidx.annotation.RequiresApi;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.TaskStackBuilder;
 import androidx.core.content.ContextCompat;
 
 import xyz.wallpanel.app.R;
@@ -53,12 +49,9 @@ public class NotificationUtils extends ContextWrapper {
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_PREVIOUS_IS_TOP);
         int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
         pendingIntent = PendingIntent.getActivity(context, 0, notificationIntent, pendingFlags);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            createChannels();
-        }
+        createChannels();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private void createChannels() {
         String description = getString(R.string.text_android_channel_description);
         int importance = NotificationManager.IMPORTANCE_LOW;
@@ -75,23 +68,10 @@ public class NotificationUtils extends ContextWrapper {
     }
 
     public Notification createNotification(String title, String message) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder nb = getAndroidChannelNotification(title, message);
-            return nb.build();
-            //getManager().notify(NOTIFICATION_ID, nb.build());
-        } else {
-            NotificationCompat.Builder nb = getAndroidNotification(title, message);
-            // This ensures that navigating backward from the Activity leads out of your app to the Home screen.
-            TaskStackBuilder stackBuilder = TaskStackBuilder.create(getApplicationContext());
-            stackBuilder.addParentStack(BrowserActivityNative.class);
-            stackBuilder.addNextIntent(notificationIntent);
-            nb.setContentIntent(pendingIntent);
-            return nb.build();
-            //getManager().notify(NOTIFICATION_ID, nb.build());
-        }
+        Notification.Builder nb = getAndroidChannelNotification(title, message);
+        return nb.build();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     public Notification.Builder getAndroidChannelNotification(String title, String body) {
         final int color = ContextCompat.getColor(getApplicationContext(), R.color.colorPrimary);
         Notification.Builder builder = new Notification.Builder(getApplicationContext(), ANDROID_CHANNEL_ID)
@@ -106,19 +86,6 @@ public class NotificationUtils extends ContextWrapper {
 
         builder.setContentIntent(pendingIntent);
         return builder;
-    }
-
-    public NotificationCompat.Builder getAndroidNotification(String title, String body) {
-        final int color = ContextCompat.getColor(getApplicationContext(), R.color.colorPrimary);
-        return new NotificationCompat.Builder(getApplicationContext())
-                .setSmallIcon(R.drawable.ic_stat_name)
-                .setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
-                .setContentTitle(title)
-                .setContentText(body)
-                .setOngoing(false)
-                .setLocalOnly(true)
-                .setColor(color)
-                .setAutoCancel(false);
     }
 
     public void clearNotification() {

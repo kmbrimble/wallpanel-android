@@ -95,10 +95,16 @@ no formal deprecation of `dagger.android` itself.
 **Post-minSdk-raise cleanup tail (actionable once `feature/minsdk-raise` merges —
 recorded together here so these don't stay scattered across branch notes).**
 
-- 8 `SDK_INT` sites intentionally left at the exact O(26) boundary by that
-  branch (its own scope was strictly below 26), plus one the sweep missed:
-  `NotificationUtils.java:416` still guards `createChannels()` with `SDK_INT >=
-  O` — always-true once minSdk is 26, found by code review, harmless but dead.
+Numbers below verified directly against `master` on 2026-09-02 — the previous
+version of this entry mis-stated both the SDK_INT count and the AndroidX
+versions (it had picked up `feature/dependency-sweep`'s post-bump state
+instead of master's).
+
+- 5 `SDK_INT >= O` (API 26) sites, all always-true dead conditionals now that
+  minSdk is 26: `BaseBrowserActivity.kt:200`, `ScreenSaverView.kt:195`/`197`,
+  `InternalWebClient.kt:112`/`114`, `NotificationUtils.java:56`/`78`. (There is
+  no `NotificationUtils.java:416` — that file is 129 lines total; the earlier
+  entry was wrong.)
 - `androidx.legacy:legacy-support-v13`/`legacy-support-v4`/`legacy-preference-v14`
   are retained solely because `androidx.legacy.widget.Space` is used at
   `fragment_about.xml:43`. Replace that one view (a plain `Space` or layout
@@ -108,15 +114,18 @@ recorded together here so these don't stay scattered across branch notes).**
   deprecation warning and is almost certainly obsolete now. Flagged during the
   dependency sweep but not removed, since removing it wasn't in that branch's
   scope — verify no remaining dependency needs Jetifier, then delete.
-- `constraintlayout` is pinned at 2.1.4 only because nothing between it and
-  2.2.x declares `minSdk <= 19` — this is a minSdk-19 artifact, not a Kotlin or
-  AGP constraint, and needs re-checking once minSdk is 26.
-- The wider AndroidX re-sweep: `appcompat`, `material`, `navigation` and
-  `lifecycle` are all hardcoded version pins capped by minSdk 19 (see
-  `feature/dependency-sweep`'s handback in `modernisation.MD` for the exact
-  ceiling versions and why). **Merging the minSdk raise does NOT auto-unlock
-  them** — these are static pins, not ranges, so a deliberate post-merge
-  re-sweep of the AndroidX bumps is required to actually reach current stable.
+- `constraintlayout` is pinned at 2.1.4 on `master` only because nothing
+  between it and 2.2.x declares `minSdk <= 19` — this is a minSdk-19 artifact,
+  not a Kotlin or AGP constraint, and needs re-checking once minSdk is 26.
+- The wider AndroidX re-sweep: on `master`, `appcompat` (1.5.1), `material`
+  (1.6.1), `navigation` (2.5.2) and `lifecycle` (2.5.1) are all hardcoded
+  version pins predating even the dependency sweep. `feature/dependency-sweep`
+  (pushed, unmerged as of 2026-09-02) already bumped these to appcompat 1.6.1,
+  material 1.12.0, navigation 2.7.7, lifecycle 2.8.7 — but capped by minSdk 19,
+  per its own handback in `modernisation.MD`. **Merging the minSdk raise does
+  NOT auto-unlock further bumps** — these are static pins, not ranges, so a
+  deliberate post-merge re-sweep against current stable (now gated only by
+  compileSdk, not minSdk) is required to actually reach current stable.
 
 ## Toolchain notes — closed avenues and deprecation deadlines
 
