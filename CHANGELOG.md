@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### Plan — 2026-09-02 — dagger.android -> Hilt migration
+
+Motivation: `android.builtInKotlin=false`/`android.newDsl=false` (needed for kapt) are
+removed in AGP 10.0; kapt->KSP for `dagger-android-processor` is a closed avenue (no KSP
+build upstream). Hilt supports KSP today, so it's the route off kapt. Also deletes a lot
+of Dagger boilerplate.
+
+Verified against master (Dagger 2.59.2, minSdk 26, compileSdk 35, AGP 9.3.2): 15
+`@ContributesAndroidInjector` targets, 1 base activity (`BaseBrowserActivity`, 1 leaf:
+`BrowserActivityNative`), 1 base fragment (`BaseSettingsFragment`, **8** leaves —
+Settings/Camera/Mqtt/Http/Motion/Face/QrCode/Sensors — the brief said 7, grep says 8),
+1 service (`WallPanelService`), 1 receiver (`BootUpReceiver`, no `@Inject` fields ->
+needs no Hilt annotation), 1 `@ViewModelKey`-bound ViewModel (`DetectionViewModel`, used
+by `LiveCameraActivity`).
+
+Plan (per Dagger's own incremental migration guide, building between stages):
+1. Add Hilt 2.59.2 gradle plugin + deps (paired with Dagger 2.59.2), remove dagger-android
+   deps. `WallPanel` -> `@HiltAndroidApp`, drop `DaggerApplication`.
+2. Migrate `ApplicationModule`/`ActivityModule` to `@InstallIn(SingletonComponent::class)`
+   (single-component collapse is a semantic no-op here, already verified in CLAUDE.md).
+3. Activities: `BrowserActivityNative`, `SettingsActivity`, `LiveCameraActivity` ->
+   `@AndroidEntryPoint`. `BaseBrowserActivity` stops extending `DaggerAppCompatActivity`,
+   becomes plain `AppCompatActivity`, no annotation (Hilt rejects it on abstract classes;
+   member-injection walks the leaf's superclass chain).
+4. Fragments: all 8 `BaseSettingsFragment` leaves -> `@AndroidEntryPoint`.
+   `BaseSettingsFragment` -> plain `PreferenceFragmentCompat`, no annotation.
+5. `WallPanelService` -> `@AndroidEntryPoint`. `DetectionViewModel` -> `@HiltViewModel` +
+   `@Inject constructor`; `LiveCameraActivity` switches from `DaggerViewModelFactory` to
+   `by viewModels()`.
+6. Delete: `ApplicationComponent`, `AndroidBindingModule`, `DaggerViewModelFactory`,
+   `ViewModelKey`, `DaggerViewModelInjectionModule`, `ApplicationScope`, `ActivityScope`,
+   and the already-dead `ServiceSubcomponent`/`ServicesModule.java`.
+
+Explicitly out of scope: switching `dagger-compiler`/`hilt-compiler` from kapt to KSP —
+separate change once Hilt itself is verified working under this project's
+`android.newDsl=false` AGP 9.3.2 setup (unverified going in, flagged as the likeliest
+hard blocker by advisor review).
+
+Verification: `assembleProdDebug`, unit tests, lint, `smoke-device.sh`,
+`panel-render-probe.sh`, then a full on-device walk of every injected screen (all 8
+settings sub-screens, About, browser activity, live camera view) since a missed
+`@AndroidEntryPoint` compiles clean and only fails at runtime with null fields — no
+automated check catches that.
+
 ### 2026-09-02 — Post-minSdk cleanup tail (0.12.0 Build 0-kmb.7)
 
 Five items unlocked by the minSdk 19->26 raise (kmb.6), plus the previously-unmerged
