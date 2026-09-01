@@ -94,6 +94,10 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+            // AGP 9.3.2 rejects 'proguard-android.txt' at evaluation time (it bakes in
+            // -dontoptimize, which AGP 9 no longer allows via getDefaultProguardFile).
+            // Forced by the AGP bump, not a minification-behavior choice — inert today
+            // since minifyEnabled is false above.
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
