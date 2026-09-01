@@ -800,7 +800,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         val deviceJson = JSONObject()
         deviceJson.put("identifiers", listOf("wallpanel_${configuration.mqttClientId}"))
         deviceJson.put("name", configuration.mqttDiscoveryDeviceName)
-        deviceJson.put("manufacturer", Build.MANUFACTURER.toLowerCase().capitalize())
+        deviceJson.put("manufacturer", Build.MANUFACTURER.lowercase().capitalize())
         deviceJson.put("model", Build.MODEL)
         return deviceJson
     }
