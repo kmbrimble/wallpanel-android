@@ -18,7 +18,30 @@ source "$SCRIPT_DIR/scripts/adb-device.sh"
 
 LOGDIR="${WALLPANEL_LOGDIR:-$SCRIPT_DIR/logs}"
 PIDFILE="$LOGDIR/capture.pid"
+SUPLOG="$LOGDIR/capture-supervisor.log"
 mkdir -p "$LOGDIR"
+
+# A live supervisor proves only that the retry loop is alive, not that anything
+# is being captured: while the tablet was offline for two days the loop retried
+# every 30s and --status still said "capture running". Treat the capture as
+# healthy only if the newest log has actually grown recently.
+STALE_AFTER_SECONDS="${WALLPANEL_CAPTURE_STALE_SECONDS:-180}"
+
+# That same two-day retry loop grew capture-supervisor.log to 2MB of identical
+# "could not reach tablet" lines, so cap it. Trimmed in place with `cat >` so the
+# inode survives -- the running `adb logcat` holds this file open on stderr, and
+# an mv would send its writes to an orphaned inode.
+SUPLOG_MAX_BYTES="${WALLPANEL_SUPLOG_MAX_BYTES:-262144}"
+sup_log() {
+    printf '%s %s\n' "$(date -Is)" "$*" >> "$SUPLOG"
+    local size
+    size=$(stat -c%s "$SUPLOG" 2>/dev/null || echo 0)
+    if (( size > SUPLOG_MAX_BYTES )); then
+        tail -c $(( SUPLOG_MAX_BYTES / 2 )) "$SUPLOG" > "$SUPLOG.tmp" 2>/dev/null \
+            && cat "$SUPLOG.tmp" > "$SUPLOG"
+        rm -f "$SUPLOG.tmp"
+    fi
+}
 
 # True if a live capture already owns the PID file. Uses /proc rather than ps,
 # which isn't installed in this container.
@@ -33,16 +56,26 @@ capture_running() {
 }
 
 if [[ "${1:-}" == "--status" ]]; then
-    if capture_running; then
-        echo "capture running (pid $(cat "$PIDFILE")), newest log: $(ls -t "$LOGDIR"/wallpanel-*.log 2>/dev/null | head -1)"
+    if ! capture_running; then
+        echo "capture NOT running"
+        exit 1
+    fi
+    NEWEST=$(ls -t "$LOGDIR"/wallpanel-*.log 2>/dev/null | head -1)
+    if [[ -z "$NEWEST" ]]; then
+        echo "capture STALLED: supervisor alive (pid $(cat "$PIDFILE")) but no capture log exists"
+        exit 2
+    fi
+    AGE=$(( $(date +%s) - $(stat -c%Y "$NEWEST") ))
+    if (( AGE <= STALE_AFTER_SECONDS )); then
+        echo "capture running (pid $(cat "$PIDFILE")), newest log: $NEWEST, grew ${AGE}s ago"
         exit 0
     fi
-    echo "capture NOT running"
-    exit 1
+    echo "capture STALLED: supervisor alive (pid $(cat "$PIDFILE")) but $NEWEST has not grown for ${AGE}s (tablet offline?)"
+    exit 2
 fi
 
 if capture_running; then
-    echo "$(date -Is) capture already running (pid $(cat "$PIDFILE")), not starting a second one" >> "$LOGDIR/capture-supervisor.log"
+    sup_log "capture already running (pid $(cat "$PIDFILE")), not starting a second one"
     exit 0
 fi
 
@@ -67,12 +100,12 @@ on_signal() {
 trap cleanup EXIT
 trap on_signal INT TERM
 
-echo "$(date -Is) capture supervisor started (pid $$)" >> "$LOGDIR/capture-supervisor.log"
+sup_log "capture supervisor started (pid $$)"
 
 while true; do
-  DEV=$(wallpanel_resolve_adb_serial 2>>"$LOGDIR/capture-supervisor.log")
+  DEV=$(wallpanel_resolve_adb_serial 2>>"$SUPLOG")
   if [ -z "$DEV" ]; then
-    echo "$(date -Is) could not reach tablet at ${WALLPANEL_TABLET_IP}, retrying" >> "$LOGDIR/capture-supervisor.log"
+    sup_log "could not reach tablet at ${WALLPANEL_TABLET_IP}, retrying"
     sleep 30
     continue
   fi
@@ -95,10 +128,10 @@ while true; do
     MtkCam/TPI_S_FB:S GPUAUX:S NormalPipe:S LMVDrv:S Hal3ARaw:S \
     MtkCam/fdNodeImp:S tsf_core:S CompositionEngine:S libPerfCtl:S \
     hwcomposer:S \
-    >> "$LOGDIR/wallpanel-$STAMP.log" 2>> "$LOGDIR/capture-supervisor.log" &
+    >> "$LOGDIR/wallpanel-$STAMP.log" 2>> "$SUPLOG" &
   LOGCAT_PID=$!
   wait "$LOGCAT_PID"
-  echo "$(date -Is) logcat exited rc=$?, retrying" >> "$LOGDIR/capture-supervisor.log"
+  sup_log "logcat exited rc=$?, retrying"
   LOGCAT_PID=""
   sleep 30
 done
