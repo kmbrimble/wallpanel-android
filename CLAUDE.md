@@ -84,6 +84,30 @@ Note that PSS comparisons across processes are easily invalidated by differing
 WebView count and renderer-crash history — both shift GL mtrack by hundreds of MB.
 Compare only samples with the same WebView count and similar uptime, and say so.
 
+## Open defect — a single renderer crash wedges the panel
+
+Reproduced twice (2026-08-30, 2026-09-01, n=2) on `xyz.wallpanel.app.kmb`. One
+renderer crash, with the dashboard visible, permanently wedges the panel:
+
+- `onWebViewRenderProcessGone` does its job — the WebView is rebuilt, `webView` is
+  VISIBLE and full-size, `progressView` is GONE, a fresh renderer binds, the app
+  process is unchanged and keeps window focus.
+- But **Home Assistant's own frontend never re-initialises**. The panel sits on
+  HA's loading screen (logo + "A project from the Open Home Foundation"), spinner
+  animating for ~5 minutes and then frozen. No self-recovery after 7 minutes.
+- Recovery is not automatable: `am start -S` and `am force-stop` + start have
+  never worked, and `adb reboot` recovers the panel but strands adb.
+
+**It does not appear to fire on its own.** Zero organic renderer crashes across
+~2.4 days of capture, against 32 injected. The one organic renderer tombstone on
+record (08-26) is on the archived `xyz.wallpanel.app` build, not ours.
+
+So: real defect, running on the wall, but provoked only by our own crash
+injection. Fix it properly when you are next in the WebView code — the likely
+shape is re-loading the page (not just rebuilding the WebView) once the new
+renderer is attached. Do not provoke it just to study it; that has cost two
+evenings and two trips to the tablet.
+
 ## Liveness — the render probe, and what it does not cover
 
 Process liveness, window focus and a bound renderer are **not** sufficient to call the
@@ -168,40 +192,47 @@ promoting.
 - **`scripts/smoke-device.sh` runs on `xyz.wallpanel.app.kmb.dev`**, against a
   debug build from the same source tree as the release. It installs, exercises
   and uninstalls the dev app itself.
-- **`scripts/smoke-renderer-crash.sh` runs on the production app by design**,
-  and takes the signed arm64-v8a APK as its argument. Keep its idle wait intact
-  — never weaken, shorten, or skip it to get a green.
+- **`scripts/panel-render-probe.sh` runs after `smoke-device.sh`** and confirms
+  the panel is actually showing the dashboard. Process liveness and window focus
+  are not sufficient — see "Liveness" above.
+- **`scripts/smoke-renderer-crash.sh` is RETIRED from the release path**
+  (2026-09-01). Do not run it to promote a build. It is kept as a deliberate,
+  attended tool for when you are working on WebView code and standing near the
+  tablet.
 
-  It installs the candidate over `xyz.wallpanel.app.kmb`, crashes the real
-  panel's WebView renderer, and on failure reinstalls the matching APK from
-  `release-out/`. It refuses to start unless the candidate carries the
-  production applicationId, is signed with the same key as the app already on
-  the device, and a `release-out/` APK matches the installed versionCode — so
-  there is always a way back before anything is installed.
+  **Why it was retired.** A single injected renderer crash reproducibly wedges
+  the panel — the app survives, keeps focus and binds a fresh renderer, but Home
+  Assistant's frontend never re-initialises and the dashboard never comes back
+  (measured 2026-08-30 and 2026-09-01, n=2). Recovery needs physical access to
+  the tablet. Meanwhile log analysis over ~2.4 days of capture found **zero
+  organic renderer crashes** against 32 injected, so this script was the only
+  thing that had ever wedged the panel: it was manufacturing the outage it was
+  meant to guard against. Two consecutive evenings ended with a dead wall panel.
 
-  **Why not the dev app:** the dev app cannot obtain a WebView renderer on this
-  tablet. It requests `SandboxedProcessService1`, whose ServiceRecord never gets
-  a bound process, while production usually gets `SandboxedProcessService0` and
-  works normally. Force-stopping prod and the launcher did not change it;
-  `pm clear` on dev only left it with no configured URL and so no WebView at all.
-  Testing the signed production artifact is better evidence anyway: it is exactly
-  what ships, on exactly the config it ships onto. Crashing the live panel's
-  renderer is an accepted cost — this is a personal wall panel, explicitly not
-  critical infrastructure.
+  If you do run it: it still refuses to start unless the candidate carries the
+  production applicationId, is signed with the same key as the installed app, and
+  a `release-out/` APK matches the installed versionCode. Keep its 35s idle wait
+  intact — never weaken, shorten or skip it to get a green; it is the only reason
+  the screensaver bug was ever caught. Default is one cycle
+  (`SMOKE_RENDERER_CYCLES` to go deeper).
 
-  **CORRECTION (2026-08-30): this was previously recorded as "unexplained and
-  deliberately closed — do not re-investigate; it affects only the harness, never
-  the shipping app." That last claim is false and the closure is withdrawn.** The
+  **Why production, not the dev app:** the dev app cannot obtain a WebView
+  renderer on this tablet. It requests `SandboxedProcessService1`, whose
+  ServiceRecord never gets a bound process, while production usually gets
+  `SandboxedProcessService0`. `pm clear` on dev only left it with no configured
+  URL and so no WebView at all.
+
+  **This is not dev-only.** It was once recorded as "unexplained and deliberately
+  closed — affects only the harness, never the shipping app". That is false. The
   production app was observed in exactly this state: after a renderer crash and a
-  force-stop restart, `xyz.wallpanel.app.kmb` requested
-  `SandboxedProcessService1:0`, whose ServiceRecord sat Pending with
-  `binder=null requested=false received=false hasBound=false`, with **no**
-  `SandboxedProcessService0:*` ServiceRecords present at all — so this is not slot
-  exhaustion. The panel was left black, with the app process alive and holding
-  window focus. It is a real production failure mode, not a harness quirk, and it
-  is open. See "Known gap" above and the renderer-bind investigation in
-  `CHANGELOG.md`.
-- **If both pass, promote automatically**: install the signed arm64-v8a APK to
+  force-stop restart it requested `SandboxedProcessService1:0`, whose
+  ServiceRecord sat Pending with `binder=null requested=false received=false
+  hasBound=false`, with **no** `SandboxedProcessService0:*` records at all — so it
+  is not slot exhaustion. The panel was left black with the app alive and holding
+  focus. Open, and unexplained.
+
+- **If `smoke-device.sh` and `panel-render-probe.sh` both pass, promote
+  automatically**: install the signed arm64-v8a APK to
   the production app `xyz.wallpanel.app.kmb` —
   ```
   adb -s 192.168.0.52:5555 install -r <signed-arm64-v8a.apk>
@@ -210,18 +241,29 @@ promoting.
   `adb connect 192.168.0.52:5555` first if it isn't already listed in
   `adb devices`).
 
-  **Address resolution is port-scan based.** A tablet reboot drops the
-  `adb tcpip 5555` pin and Android re-assigns wireless debugging to a random
-  ephemeral port, so `scripts/adb-device.sh` tries `<ip>:5555` first and, on
-  failure, port-scans `30000-60999` (bounded parallel probes via bash's
-  `/dev/tcp`, ~14s for the full range against a live device), connects to the
-  first candidate that reports `device`, then re-pins 5555 so the fast path
-  works again. **Do not reinstate mDNS discovery** (`adb mdns services`): it
+  **Address resolution is port-scan based.** `scripts/adb-device.sh` tries
+  `<ip>:5555` first and, on failure, port-scans `30000-60999` (bounded parallel
+  probes via bash's `/dev/tcp`, ~14-23s for the full range), connects to the first
+  candidate that reports `device`, then re-pins 5555 so the fast path works again.
+
+  **A reboot does NOT leave adb reachable on another port — it leaves adb off.**
+  This file previously claimed a reboot re-assigns wireless debugging to a random
+  ephemeral port that the scan then recovers. That is **0 for 2** in practice
+  (2026-08-30 and 2026-09-01): after both reboots the host answered on the network
+  (`Connection refused`, not a timeout, on every port probed) but the full
+  `30000-60999` scan found **no open port at all**, and a LAN-wide sweep for adb
+  found nothing either. Wireless debugging appears to be simply **off** after a
+  reboot, not moved. Recovering it needs someone at the tablet:
+  Settings > Developer options > Wireless debugging. Assume any reboot strands the
+  harness until a human intervenes, and never build automation that depends on adb
+  surviving one. **Do not reinstate mDNS discovery** (`adb mdns services`): it
   relies on multicast, which does not cross this container's Docker bridge, so
   it always returns zero services here — it failed closed, but could never
   succeed, which made it dead code that read as functional. `SMOKE_SERIAL`
   remains a raw bypass for both smoke scripts.
-- **If either script fails, do not promote.** Report and stop.
+- **If either fails, do not promote.** Report and stop. A failing render probe
+  means the panel is wedged and needs physical attention — say so loudly rather
+  than retrying, and never `pm clear` (it wipes the HA config).
 - Keep every promoted APK at `release-out/WallPanelApp-arm64-<versionName>.apk`
   and attach it to its GitHub release. **Never delete older ones.**
 - **Rollback (manual, by the user only)**:
