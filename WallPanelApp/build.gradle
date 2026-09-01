@@ -169,9 +169,7 @@ dependencies {
     implementation 'androidx.preference:preference-ktx:1.2.1'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
-    // Capped by minSdk 19: constraintlayout 2.2.x needs minSdk 21. No version between
-    // 2.1.4 and 2.2.x declares minSdk <= 19, so this one stays unbumped until minSdk 21+.
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
     implementation 'androidx.vectordrawable:vectordrawable:1.2.0'
     // Vision API deprecated; ML Kit is the replacement (migration in progress)
     implementation 'com.google.android.gms:play-services-vision:20.1.3'
