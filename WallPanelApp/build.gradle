@@ -166,10 +166,9 @@ dependencies {
 
     implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'com.google.android.material:material:1.14.0'
-    implementation 'androidx.legacy:legacy-support-v13:1.0.0'
-    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation 'androidx.legacy:legacy-preference-v14:1.0.0'
     implementation 'androidx.preference:preference-ktx:1.2.1'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
     // Capped by minSdk 19: constraintlayout 2.2.x needs minSdk 21. No version between
     // 2.1.4 and 2.2.x declares minSdk <= 19, so this one stays unbumped until minSdk 21+.
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
