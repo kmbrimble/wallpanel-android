@@ -16,9 +16,8 @@
 
 package xyz.wallpanel.app.modules
 
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
@@ -34,7 +33,7 @@ import java.util.*
  */
 @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
 class TextToSpeechModule( base: Context?) : ContextWrapper(base),
-        TextToSpeech.OnInitListener, LifecycleObserver {
+        TextToSpeech.OnInitListener, DefaultLifecycleObserver {
 
     private var textToSpeech: TextToSpeech? = null
     private val UTTERANCE_ID = BuildConfig.APPLICATION_ID + ".UTTERANCE_ID"
@@ -43,8 +42,8 @@ class TextToSpeechModule( base: Context?) : ContextWrapper(base),
     init {
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_START)
-    fun start() {
+    override fun onStart(owner: LifecycleOwner) {
+        Timber.d("TTS start (ON_START)")
         if(textToSpeech == null) {
             Timber.i( "TTS initializing")
             textToSpeech = TextToSpeech(baseContext, this)
@@ -83,8 +82,8 @@ class TextToSpeechModule( base: Context?) : ContextWrapper(base),
         }
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-    fun stop() {
+    override fun onDestroy(owner: LifecycleOwner) {
+        Timber.d("TTS stop (ON_DESTROY)")
         if(textToSpeech != null) {
             textToSpeech?.stop()
             textToSpeech?.shutdown()

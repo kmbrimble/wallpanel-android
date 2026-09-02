@@ -27,9 +27,8 @@ import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.databinding.DialogCodeSetBinding
 import xyz.wallpanel.app.databinding.DialogScreenSaverBinding
@@ -39,13 +38,17 @@ import timber.log.Timber
 /**
  * Dialog utils
  */
-class DialogUtils(base: Context?) : ContextWrapper(base), LifecycleObserver {
+class DialogUtils(base: Context?) : ContextWrapper(base), DefaultLifecycleObserver {
 
     private var screenSaverDialog: Dialog? = null
     private var alertDialog: AlertDialog? = null
     private var dialog: Dialog? = null
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    override fun onDestroy(owner: LifecycleOwner) {
+        Timber.d("clearDialogs (ON_DESTROY)")
+        clearDialogs()
+    }
+
     fun clearDialogs() {
         hideAlertDialog()
         hideDialog()
