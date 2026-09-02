@@ -131,3 +131,49 @@ them killed the app, so none exercised the renderer-bind path, and none wedged.*
 4. Whether DuraSpeed keys on `forceStopPackage` specifically or on process death generally
    **remains untested**, because every non-force-stop path that could have isolated it is
    unavailable here. Root would be needed to settle it, and it isn't worth rooting the panel.
+
+## Stage 2 addendum — what was built, and two measurements worth keeping (2026-09-02)
+
+Commit `ef7c32f`. Built on the `dev` flavour and verified there; **not promoted**.
+
+### The startup flag write CURES, it does not merely prevent
+
+The headline Stage 2 result. Same build, same trigger (`adb am force-stop` + relaunch,
+`setting.duraspeed.enabled=1`), varying only whether the app held `WRITE_SECURE_SETTINGS`:
+
+| Permission | Flag after launch | Renderer | `pageLoadComplete` | Result |
+|---|---|---|---|---|
+| **held** (n=2) | 1 → **0** by the app | **bound** | **+0.75s** | renders |
+| **revoked** (n=1, control) | stays 1 | none, `Pending` | never | **WEDGE** |
+
+So DuraSpeed re-evaluates the flag **when the renderer is requested**, and does not latch a
+decision at force-stop time. Clearing the flag in `Application.onCreate` — seconds before the
+bind — is enough to recover a launch that would otherwise have wedged. This makes the
+developer workflow and `promote.sh` safe without any manual flag-setting, once the permission
+is granted post-promotion.
+
+### `webViewRenderProcess` is NOT a wedge signal — do not reuse it
+
+The obvious gate for (c) was `WebView.getWebViewRenderProcess() == null`. **Measured non-null
+during a confirmed wedge** (`hasBound=0`, `Pending ServiceRecord`, no renderer `Start proc`),
+so it reports a renderer that demonstrably does not exist. Rejected on evidence.
+
+`webView.progress` was the replacement, but note it is **10 in a wedge, not 0** — WebView
+reports an initial value before any renderer work. The shipped gate is therefore
+`progress <= 10`, a measured constant rather than a documented one. Failure mode if a future
+WebView differs is silence (no message), not a false alarm.
+
+### Known limitation: the screensaver wipes the message
+
+`DialogUtils.showScreenSaver` calls `clearDialogs()` → `hideAlertDialog()`, so the DuraSpeed
+notice is dismissed when the screensaver appears — observed at ~30s in testing. Pre-existing
+shared behaviour affecting every alert dialog, not introduced by (c). Not fixed: the fix
+touches dialog behaviour used by everything else, which was out of scope for a minimal (c).
+
+### Still unverified — blocked until promotion, not skipped
+
+- **The reboot test.** Requires the prod app to hold `WRITE_SECURE_SETTINGS`, which requires a
+  build declaring it in the manifest to be installed. Post-promotion sequence: install,
+  `pm grant`, reboot, then read `settings get global setting.duraspeed.enabled` — expect `0`
+  with nobody touching it.
+- **(c) on the prod package.** Verified on `dev` only.

@@ -365,9 +365,26 @@ promoting.
   `settings put global setting.duraspeed.enabled 0` — worked 5/5 on the
   exact force-stop trigger that reproduced the wedge. **It does not survive
   reboot** — a reboot re-enables DuraSpeed and the wedge risk returns until
-  the setting is re-applied. The app has been granted `WRITE_SECURE_SETTINGS`
-  via `adb` so it can set this flag itself on startup — that's the next
-  feature to build, not yet implemented.
+  the setting is re-applied.
+
+  **The app now clears the flag itself on startup (built 2026-09-02, commit
+  `ef7c32f`, NOT yet promoted).** `WallPanel.onCreate` calls
+  `DuraSpeed.disableIfPermitted()` before any WebView exists, writing
+  `setting.duraspeed.enabled=0` when `WRITE_SECURE_SETTINGS` is held, and doing
+  nothing (never crashing) when it isn't. Measured on device, n=2 with a
+  controlled revoked-permission trial that wedged: **this CURES an in-flight
+  suppression, not just prevents future ones** — with the permission held the
+  renderer bound and the page loaded 0.75s after the write. So DuraSpeed
+  re-evaluates the flag when the renderer is requested; it does not latch a
+  decision at force-stop time.
+
+  **The grant does not currently exist and must be re-issued after the next
+  promotion.** This file previously claimed the app "has been granted
+  `WRITE_SECURE_SETTINGS` via adb" — that was verified false on 2026-09-02:
+  `dumpsys package xyz.wallpanel.app.kmb` lists the permission not at all,
+  because kmb.8's manifest never declared it. A grant cannot exist until a build
+  carrying the manifest entry is installed. After promoting, run:
+  `adb shell pm grant xyz.wallpanel.app.kmb android.permission.WRITE_SECURE_SETTINGS`
 
   **Ruled out along the way — keep this list, don't re-test any of it:**
   - **Dev app cannot obtain a renderer.** False. The dev app was observed
