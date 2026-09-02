@@ -26,6 +26,7 @@ import android.os.StrictMode.VmPolicy
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import xyz.wallpanel.app.utils.LauncherShortcuts
+import xyz.wallpanel.app.utils.DuraSpeed
 import xyz.wallpanel.app.utils.WallpanelDebugTree
 
 
@@ -34,6 +35,8 @@ class WallPanel : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before anything builds a WebView: DuraSpeed can otherwise suppress the renderer.
+        DuraSpeed.disableIfPermitted(this)
         if (BuildConfig.DEBUG) {
             // Gives clickable links to the issue in the Android Studio Logcat
             Timber.plant(WallpanelDebugTree())

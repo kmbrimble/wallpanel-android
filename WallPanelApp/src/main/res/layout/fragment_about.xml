@@ -69,6 +69,18 @@
                     android:maxLines="2"
                     tools:text="v1.2.4.5"/>
 
+            <TextView
+                    android:id="@+id/duraspeedNotice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textSize="12sp"
+                    style="@style/TextAppearance.AppCompat.Small"
+                    android:gravity="center"
+                    android:visibility="gone"
+                    android:text="@string/text_duraspeed_device"
+                    tools:visibility="visible"/>
+
         </LinearLayout>
 
         <View style="@style/DividerHorizontal"/>

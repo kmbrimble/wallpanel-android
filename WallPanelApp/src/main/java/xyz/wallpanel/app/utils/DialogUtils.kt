@@ -17,6 +17,8 @@
 package xyz.wallpanel.app.utils
 
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.DialogInterface
@@ -96,6 +98,25 @@ class DialogUtils(base: Context?) : ContextWrapper(base), LifecycleObserver {
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(android.R.string.ok, null)
+                .show()
+    }
+
+    /**
+     * Alert with a neutral button that puts [textToCopy] on the clipboard - for showing a
+     * shell command the user has to run on a computer, which they cannot retype off a wall
+     * panel. Used by the DuraSpeed block notice.
+     */
+    fun showAlertDialogWithCopy(activity: AppCompatActivity, title: String, message: String,
+                                copyLabel: String, textToCopy: String) {
+        hideAlertDialog()
+        alertDialog = AlertDialog.Builder(activity)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(copyLabel) { _, _ ->
+                    val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("adb command", textToCopy))
+                }
                 .show()
     }
 

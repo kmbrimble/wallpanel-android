@@ -40,6 +40,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import xyz.wallpanel.app.databinding.ActivityBrowserBinding
 import xyz.wallpanel.app.network.ConnectionLiveData
 import xyz.wallpanel.app.ui.fragments.CodeBottomSheetFragment
+import xyz.wallpanel.app.utils.DuraSpeed
 import xyz.wallpanel.app.utils.InternalWebChromeClient
 import xyz.wallpanel.app.ui.views.WebClientCallback
 import xyz.wallpanel.app.utils.InternalWebClient
@@ -50,6 +51,15 @@ import java.net.URISyntaxException
 import java.util.*
 import java.util.concurrent.TimeUnit
 
+
+/**
+ * What WebView reports for load progress before a renderer has done any work. Measured as 10
+ * on this project's panel during a DuraSpeed wedge; it is not a documented constant.
+ *
+ * ponytail: if a future WebView reports something else this goes quiet - no false alarm,
+ * just no message. Revisit by logging progress from a real wedge.
+ */
+private const val WEBVIEW_INITIAL_PROGRESS = 10
 
 @AndroidEntryPoint
 class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClientCallback {
@@ -74,6 +84,7 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
         if (binding.progressView.visibility == View.VISIBLE) {
             Timber.w("Progress hide timeout: hiding progress so user can interact")
             binding.progressView.visibility = View.GONE
+            reportDuraSpeedBlockIfLikely()
         }
     }
 
@@ -388,6 +399,38 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
 
     private fun configureWebViewClient() {
         webView.webViewClient = InternalWebClient(resources = resources, callback = this, configuration = configuration, dialogUtils = dialogUtils)
+    }
+
+    /**
+     * Reaching here means the page never finished loading - complete() cancels this
+     * runnable, so a load that worked can't get this far. On a DuraSpeed device that never
+     * got past the initial progress value, that is almost certainly a suppressed browser
+     * process, which otherwise leaves a blank screen with nothing said about it.
+     *
+     * A merely slow dashboard still has a renderer, so it falls through silently and
+     * keeps the old behaviour.
+     */
+    private fun reportDuraSpeedBlockIfLikely() {
+        if (isFinishing || !DuraSpeed.isSupportedDevice()) return
+        // Real load progress only comes from the renderer, so a suppressed one leaves the
+        // WebView pinned at the value it reports before any renderer work. A dashboard that
+        // is merely slow has moved past that by now and falls through silently.
+        //
+        // webViewRenderProcess is NOT usable for this: measured non-null in the same wedge
+        // where no renderer was ever bound.
+        val progress = webView.progress
+        Timber.w("Page load timed out on a DuraSpeed device, progress=$progress")
+        if (progress > WEBVIEW_INITIAL_PROGRESS) return
+        val command = "adb shell settings put global ${DuraSpeed.SETTING} 0 && " +
+                "adb shell am force-stop $packageName && " +
+                "adb shell am start -n $packageName/${BrowserActivityNative::class.java.name}"
+        dialogUtils.showAlertDialogWithCopy(
+            this,
+            getString(R.string.dialog_title_duraspeed_blocked),
+            getString(R.string.dialog_message_duraspeed_blocked, command),
+            getString(R.string.button_copy_command),
+            command
+        )
     }
 
     private fun initWebPageLoad() {

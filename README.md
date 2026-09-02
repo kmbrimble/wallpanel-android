@@ -101,6 +101,57 @@ This WebView does not have full feature parity with Chrome for Android and is gi
 
 Setting WallPanel as the default Home application will always load this application as your home. Removing this feature is difficutl without uninstalling the application. So please do this is you wish to use the application as a "kiosk" type application.
 
+## MediaTek DuraSpeed
+
+On some MediaTek devices (Lenovo tablets among them), a vendor service called **DuraSpeed**
+can stop WallPanel's browser engine from starting. The app comes up, holds focus and looks
+alive, but the dashboard never appears — the page stays blank because the WebView never gets
+a renderer process. Nothing is logged by the browser engine when this happens; it simply goes
+quiet.
+
+**This mostly affects developers, not everyday users.** In testing on an affected tablet, a
+force-stop from *Settings > Apps > WallPanel > Force stop* never triggered it (5 out of 5
+launches were fine), while an `adb shell am force-stop` followed by a relaunch triggered it
+every time. If you are not force-stopping the app over adb, you are unlikely to see it.
+
+Check whether your device ships DuraSpeed at all:
+
+```
+adb shell getprop persist.vendor.duraspeed.support
+```
+
+`1` means it does. WallPanel also says so on its **Settings > About** screen.
+
+### Fixing it
+
+Turn DuraSpeed off, then restart the app:
+
+```
+adb shell settings put global setting.duraspeed.enabled 0
+adb shell am force-stop xyz.wallpanel.app
+adb shell am start -n xyz.wallpanel.app/xyz.wallpanel.app.ui.activities.BrowserActivityNative
+```
+
+(Use your build's application id — the fork used here is `xyz.wallpanel.app.kmb`, and debug
+builds add `.dev`.) With the setting at `0` the force-stop is safe.
+
+**The setting does not survive a reboot.** To make WallPanel turn DuraSpeed off by itself on
+every start, grant it the permission to write secure settings:
+
+```
+adb shell pm grant xyz.wallpanel.app android.permission.WRITE_SECURE_SETTINGS
+```
+
+The app then clears the flag in `Application.onCreate`, before any WebView is built. This is
+enough to recover an app that is *already* being suppressed, not just to prevent it — the
+suppression is re-evaluated when the renderer is requested, so clearing the flag at startup
+lets the renderer bind normally on that same launch. Without the permission the app logs that
+it does not hold it and carries on; the permission cannot be granted without a computer, so
+most installs will not have it.
+
+If a load times out on a DuraSpeed device with no renderer attached, the app now says so and
+offers the command above to copy, rather than sitting on a blank screen.
+
 ## Contribution
 
 All are welcome to propose a feature request, report or bug, or contribute to the project by updating examples or with a PR for new features. Thanks to all the [contributors](graphs/contributors) who have contributed to the project!

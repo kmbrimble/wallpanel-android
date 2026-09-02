@@ -19,6 +19,11 @@
         tools:ignore="ProtectedPermissions" />
     <!-- Optional supported features -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <!-- Granted over adb only (pm grant); lets the app switch MediaTek DuraSpeed off so it
+         cannot suppress the WebView renderer. Absent on normal installs - see DuraSpeed.kt. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-feature
         android:name="android.hardware.audio.low_latency"
         android:required="false" />

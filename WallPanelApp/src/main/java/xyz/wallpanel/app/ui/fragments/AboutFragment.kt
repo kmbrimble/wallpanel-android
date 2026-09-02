@@ -28,6 +28,7 @@ import android.view.ViewGroup
 import androidx.navigation.Navigation
 import xyz.wallpanel.app.R
 import xyz.wallpanel.app.ui.activities.SettingsActivity
+import xyz.wallpanel.app.utils.DuraSpeed
 import xyz.wallpanel.app.databinding.FragmentAboutBinding
 
 import timber.log.Timber
@@ -65,6 +66,11 @@ class AboutFragment : Fragment() {
             binding.versionName.text = versionNumber
         } catch (e: PackageManager.NameNotFoundException) {
             Timber.e(e.message)
+        }
+
+        // Only shown on devices that actually ship DuraSpeed - see DuraSpeed.kt.
+        if (DuraSpeed.isSupportedDevice()) {
+            binding.duraspeedNotice.visibility = View.VISIBLE
         }
 
         binding.sendFeedbackButton.setOnClickListener { feedback() }

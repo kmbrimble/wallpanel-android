@@ -347,4 +347,10 @@
     </string-array>
 
 
+
+    <!-- MediaTek DuraSpeed -->
+    <string name="text_duraspeed_device">This device has MediaTek DuraSpeed, which can block the browser engine from starting. See the project README.</string>
+    <string name="dialog_title_duraspeed_blocked">Browser engine blocked</string>
+    <string name="dialog_message_duraspeed_blocked">The page could not load because this device\'s MediaTek DuraSpeed manager blocked the browser process from starting.\n\nThis is known to happen after the app is force-stopped over adb. It is not a problem with the dashboard or the network.\n\nTo fix it, either reboot the device, or run this from a computer with adb:\n\n%1$s</string>
+    <string name="button_copy_command">Copy command</string>
 </resources>
