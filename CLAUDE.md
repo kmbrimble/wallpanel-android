@@ -349,33 +349,54 @@ promoting.
   the screensaver bug was ever caught. Default is one cycle
   (`SMOKE_RENDERER_CYCLES` to go deeper).
 
-  **"The dev app cannot obtain a WebView renderer on this tablet" — disproven,
-  2026-09-02.** The dev app was later observed obtaining a renderer and
-  rendering a page on this same tablet, on the same day this claim was
-  written. Do not treat dev-vs-prod as a reliable split.
+  **Root cause found, 2026-09-02: MediaTek DuraSpeed.** DuraSpeed is compiled
+  into this device's `system_server` (`bringUpServiceLocked`) and refuses to
+  spawn services for apps on its suppress list — including, on this tablet,
+  the `SandboxedProcessService` WebView needs to spin up a renderer. When it
+  fires, the bind request is accepted into AMS's bookkeeping and then simply
+  never acted on: `ServiceRecord` sits Pending with `binder=null
+  requested=false received=false hasBound=false`, and no `Start proc` line
+  is ever logged for it — confirmed via logcat correlation against trial
+  timestamps, and via an independent source with MTK framework access.
+  Confirmed live on-device: DuraSpeed is present and enabled
+  (`persist.vendor.duraspeed.app.on=1`,
+  `persist.vendor.duraspeed.lowmemory.enable=1`, package
+  `com.mediatek.duraspeed` installed). The kill switch —
+  `settings put global setting.duraspeed.enabled 0` — worked 5/5 on the
+  exact force-stop trigger that reproduced the wedge. **It does not survive
+  reboot** — a reboot re-enables DuraSpeed and the wedge risk returns until
+  the setting is re-applied. The app has been granted `WRITE_SECURE_SETTINGS`
+  via `adb` so it can set this flag itself on startup — that's the next
+  feature to build, not yet implemented.
 
-  **The `SandboxedProcessService0` vs `SandboxedProcessService1` split does
-  not predict success or dev-vs-prod — disproven, 2026-09-02.** Controlled
-  trials against production (force-stop, then either `am start -n` or a
-  `monkey -c LAUNCHER` relaunch, repeated) showed: a pass on Service0, an
-  immediate-next-attempt fail on Service1 (stuck Pending, never recovered
-  across 3 more automated retries), and a later fail on Service0 again after
-  a LAUNCHER-intent relaunch. The slot number is noise, not a signal.
-
-  **This is not dev-only, and not method-dependent.** It was once recorded as
-  "unexplained and deliberately closed — affects only the harness, never the
-  shipping app". That is false. The production app was observed in exactly
-  this state under both `am start -n` and LAUNCHER-intent relaunch: the
-  `ServiceRecord` sat Pending with `binder=null requested=false
-  received=false hasBound=false`, and critically, **no `Start proc` line is
-  ever logged for the sandboxed service in this state** — confirmed via
-  logcat correlation against trial timestamps. This rules out a zygote/OOM
-  spawn failure or slot exhaustion (only one isolated process existed
-  system-wide at the time): ActivityManagerService accepts the bind request
-  into its bookkeeping and then never acts on it. Once wedged this way, it
-  does not self-recover — repeated automated force-stop+relaunch cycles (both
-  methods) left it stuck for over a minute until a human intervened. Open,
-  and unexplained.
+  **Ruled out along the way — keep this list, don't re-test any of it:**
+  - **Dev app cannot obtain a renderer.** False. The dev app was observed
+    obtaining a renderer and rendering a page on this same tablet, the same
+    day the claim was written. Not a real dev-vs-prod split — both are
+    equally exposed to DuraSpeed suppression.
+  - **`SandboxedProcessService0` vs `SandboxedProcessService1` predicts
+    success.** False. Controlled trials against production (force-stop, then
+    either `am start -n` or a `monkey -c LAUNCHER` relaunch, repeated) showed
+    a pass on Service0, an immediate-next-attempt fail on Service1, and a
+    later fail on Service0 again after a LAUNCHER-intent relaunch. The slot
+    number is assigned before DuraSpeed's suppress check and carries no
+    signal about it.
+  - **Launch method (`am start -n` vs LAUNCHER-intent) is the discriminator.**
+    False. Both methods hit the identical failure signature under production;
+    DuraSpeed's suppress list is keyed on something else entirely (still
+    unconfirmed which trigger condition, beyond "recent force-stop of this
+    app" as the reproducible case).
+  - **Isolated-UID exhaustion.** False. At the moment of a reproduced
+    failure, only 1 of ~1000 isolated UID slots was in use system-wide (the
+    launcher's own), and this app's prior isolated process had already been
+    cleanly torn down (obituary received ~2.3s before the new bind attempt,
+    no leaked/zombie `ProcessRecord`). AMS's isolated-UID allocator was never
+    even reached — DuraSpeed's suppress check runs upstream of it.
+  - **Manual cache-clear is what unwedges the panel.** Not the operative
+    mechanism. The manual recovery routine (force-stop, clear app cache
+    storage, reopen) works because of the force-stop + delay, not the cache
+    clear — DuraSpeed's suppression is what force-stop was incidentally
+    working around some of the time.
 
 - **If `smoke-device.sh` and `panel-render-probe.sh` both pass, promote
   automatically** via `scripts/promote.sh <signed-arm64-v8a.apk>`. Do not run

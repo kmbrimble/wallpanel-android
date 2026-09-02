@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — Root cause found: MediaTek DuraSpeed blocks renderer spawn after force-stop
+
+The `SandboxedProcessService1` renderer-bind wedge (panel force-stopped/relaunched,
+WebView never gets a renderer, dashboard never loads) is caused by **MediaTek
+DuraSpeed**, compiled into this device's `system_server`. DuraSpeed maintains a
+background-service suppress list; when this app is on it, `bringUpServiceLocked`
+accepts the WebView renderer's bind request into AMS's bookkeeping and never acts on
+it — `ServiceRecord` stays Pending, `binder=null requested=false received=false
+hasBound=false`, and no `Start proc` line is ever logged for it. Confirmed via logcat
+correlation against reproduction timestamps, and independently by a source with MTK
+framework access. On-device confirmation: DuraSpeed present and enabled
+(`persist.vendor.duraspeed.app.on=1`, `persist.vendor.duraspeed.lowmemory.enable=1`,
+package `com.mediatek.duraspeed` installed).
+
+**Fix:** `settings put global setting.duraspeed.enabled 0`. Verified 5/5 against the
+exact force-stop trigger that reproduces the wedge. **Does not survive reboot** — a
+reboot re-enables DuraSpeed and the wedge risk returns until the setting is reapplied.
+The app has been granted `WRITE_SECURE_SETTINGS` via `adb` so it can set this itself
+on startup; that's the next feature, not yet built.
+
+Everything chased before this finding was noise, not the mechanism, and is recorded
+here so none of it gets re-investigated:
+- **Dev app can't get a renderer** — false, the dev app was later observed rendering
+  on this same tablet the same day.
+- **`SandboxedProcessService0` vs `SandboxedProcessService1` predicts success** —
+  false, both slot numbers passed and failed across controlled trials; the slot is
+  assigned before DuraSpeed's suppress check runs.
+- **Launch method (`am start -n` vs LAUNCHER-intent) is the discriminator** — false,
+  both hit the identical failure signature.
+- **Isolated-UID exhaustion** — false, only 1 of ~1000 isolated UID slots was in use
+  at a reproduced failure, with no leaked/zombie `ProcessRecord`; AMS's UID allocator
+  is never reached because DuraSpeed's check runs upstream of it.
+- **Manual cache-clear is what recovers the panel** — not the operative step; the
+  force-stop + delay in that routine is what was incidentally working around
+  DuraSpeed some of the time, not the cache clear itself.
+
+See `CLAUDE.md`'s renderer-crash section for the full ruled-out ledger.
+
 ### Plan — 2026-09-02 — dagger.android -> Hilt migration
 
 Motivation: `android.builtInKotlin=false`/`android.newDsl=false` (needed for kapt) are
