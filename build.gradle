@@ -27,6 +27,9 @@ buildscript {
         classpath 'com.android.tools.build:gradle:9.3.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "com.google.dagger:hilt-android-gradle-plugin:2.59.2"
+        // Pinned to the KSP release matching Kotlin 2.2.21 exactly — KSP versions
+        // are Kotlin-version-locked, so this moves only when kotlin_version does.
+        classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.21-2.0.5"
     }
 }
 
