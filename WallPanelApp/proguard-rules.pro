@@ -15,21 +15,11 @@
 -keep class *_Factory { *; }
 -keep class *_MembersInjector { *; }
 
-# Gson / Retrofit
+# Generic signature/annotation retention. Previously filed under a "Gson / Retrofit"
+# heading, but Gson, Retrofit and OkHttp are gone and these are not theirs - Hilt and
+# Dagger need both to resolve generic bindings and read @Inject/@Module. Keep.
 -keepattributes Signature
 -keepattributes *Annotation*
--keep class com.google.gson.** { *; }
--keep class * implements com.google.gson.TypeAdapterFactory
--keep class * implements com.google.gson.JsonSerializer
--keep class * implements com.google.gson.JsonDeserializer
--keepclassmembers,allowobfuscation class * {
-  @com.google.gson.annotations.SerializedName <fields>;
-}
--dontwarn com.google.gson.**
-
-# OkHttp
--dontwarn okhttp3.**
--dontwarn okio.**
 
 # HiveMQ / Netty (already below)
 -keepattributes SourceFile,LineNumberTable
