@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.11: five unused dependency stacks removed, release APK down 67%
+
+Removed, each re-grepped across all source sets plus `proguard-rules.pro` before
+deletion and then confirmed absent from the built dex rather than trusting a green
+compile: **ML Kit** (barcode-scanning, face-detection), **Retrofit ×3**, **OkHttp ×2**
+(Gson came only via converter-gson and went with it), **rxandroid** and
+**lifecycle-reactivestreams-ktx**, and **android-retrostreams/-retrofuture** (HiveMQ
+backports for minSdk < 24, redundant at 26).
+
+**APK size, arm64-v8a release split: 27,877,646 → 9,243,267 bytes unsigned (−66.8%).**
+12,694,000 of that is ML Kit's two native libraries, which the release APK stored
+*uncompressed*; the rest is dex (8,042,923 → 6,900,102 compressed). The
+`Unable to strip the following libraries: libbarhopper_v3.so,
+libface_detector_v2_jni.so` warning, present in every build since 2026-08-30, is gone.
+
+**RxJava was not removable and the earlier scoping note was wrong about it.**
+`hivemq-mqtt-client` depends on it directly (`io.reactivex.rxjava2:rxjava:2.2.21 →
+org.reactivestreams`). The direct declaration was redundant *and* was pinning RxJava
+down to 2.2.19; dropping it lets the transitive 2.2.21 win. No size saving.
+
+`play-services-vision` deliberately **kept** — it is the live detector stack
+(MotionDetector, StreamingDetector, CameraReader, CameraSourcePreview, CameraFpsPin),
+confirmed still in the dex at 1525 references, and the panel still reports
+`"camera":true` after promotion. ML Kit was its intended replacement and was never
+wired to anything; removing ML Kit forecloses that migration, which is a decision
+rather than incidental cleanup.
+
+`proguard-rules.pro`: dropped rules for libraries that no longer exist, but **kept**
+`-keepattributes Signature` and `-keepattributes *Annotation*`. They sat under a
+"Gson / Retrofit" heading but belong to Hilt/Dagger — deleting them with the heading
+would have been a silent trap the day minification is enabled.
+
+`junit` pinned `4.+` → `4.13.2`.
+
 ### 2026-09-02 — kmb.10: kapt removed, hilt-compiler now runs on KSP (stage 1)
 
 `hilt-compiler` was the only annotation processor still on kapt — `dagger-android`
