@@ -18,7 +18,7 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'kotlin-parcelize'
-    id 'kotlin-kapt' // Allows for Kotlin annotation processors
+    id 'com.google.devtools.ksp'
     //id 'androidx.navigation.safeargs.kotlin'
     id 'dagger.hilt.android.plugin'
 }
@@ -47,25 +47,22 @@ def BROKER() { return safeLocalProperty("broker", "") }
 def BROKER_PASS() { return safeLocalProperty("brokerPass", "") }
 def BROKER_USERNAME() { return safeLocalProperty("brokerUsername", "") }
 
-// Use JDK 17 for compilation so kapt/Kotlin work when running Gradle on JDK 25
+// Use JDK 17 for compilation so Kotlin/KSP work when running Gradle on JDK 25
 kotlin {
     jvmToolchain(17)
 }
 
+// Hilt's Gradle plugin normally injects these via AGP's new Variant API, which
+// android.newDsl=false disables — so they never reach the processor task. That was
+// true under kapt and is still true under KSP: newDsl=false stays until kotlin-android
+// itself is dropped (KSP stage 2), so these still have to be passed by hand.
+// kapt's correctErrorTypes/javacOptions had no KSP equivalent and were dropped with it.
+ksp {
+    arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
+    arg("dagger.hilt.android.internal.projectType", "APP")
+}
+
 android {
-    kapt {
-        correctErrorTypes = true
-        javacOptions {
-            option("--release", "17")
-        }
-        // Hilt's Gradle plugin normally injects these via AGP's new Variant API,
-        // which android.newDsl=false (needed for kapt under AGP 9) disables — so
-        // the flags never reach the classic kotlin-kapt task. Passed by hand.
-        arguments {
-            arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
-            arg("dagger.hilt.android.internal.projectType", "APP")
-        }
-    }
     compileSdk 35
     lint {
         // Gate release builds on lintVital, which only checks Fatal-severity issues
@@ -208,11 +205,11 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:3.12.13'
 
     // Hilt (ships in lockstep with Dagger; paired at the same version).
-    // The Gradle plugin auto-wires the kapt dependency, but only recognizes the
+    // The Gradle plugin auto-wires the processor dependency, but only recognizes the
     // current "hilt-compiler" artifact name, not the older "hilt-android-compiler" -
     // declaring the latter left @AndroidEntryPoint's value permanently unfilled.
     implementation "com.google.dagger:hilt-android:$versions.dagger"
-    kapt "com.google.dagger:hilt-compiler:$versions.dagger"
+    ksp "com.google.dagger:hilt-compiler:$versions.dagger"
 
     // MQTT
     implementation 'com.hivemq:hivemq-mqtt-client:1.3.2'

@@ -95,12 +95,38 @@ it from `dagger-compiler` across kapt/KSP failed with unresolved bindings in
 removed `dagger-android` from this codebase entirely, which was the documented
 condition for reopening it.
 
-Current state, read from `WallPanelApp/build.gradle` on 2026-09-02: `kapt`
-appears **exactly once**, `kapt "com.google.dagger:hilt-compiler"`. There is no
-`dagger-compiler`, no Glide compiler, no `lifecycle-compiler` and no databinding
-kapt. So the last kapt processor is **`hilt-compiler`, not `dagger-compiler`** —
-an earlier version of this file said otherwise — and Hilt supports KSP today
-(KSP `2.2.21-2.0.5` matches our Kotlin exactly). The migration is open.
+**KSP stage 1 is DONE (2026-09-02, `feature/ksp-stage-1`).** `hilt-compiler`
+was the only kapt processor left; it now runs under KSP `2.2.21-2.0.5` (pinned in
+the root `build.gradle` — KSP versions are Kotlin-locked, so it moves only when
+`kotlin_version` does). **kapt is gone from this project entirely.**
+
+- The two Hilt processor args still have to be hand-passed, now via `ksp { arg(...) }`.
+  They are NOT auto-wired under KSP either: the reason they were hand-passed was
+  `android.newDsl=false` disabling the Variant API the Hilt plugin injects through,
+  and that is still set. They only become automatic at stage 2.
+- kapt's `correctErrorTypes` and `javacOptions --release 17` had no KSP equivalent
+  and were dropped with the block.
+- **Where the generated code lives changed.** Under kapt everything landed in
+  `build/generated/source/kapt/`. Under KSP the per-target `Hilt_*` classes go to
+  `build/generated/ksp/<variant>/java/`, but the **root component**
+  (`Hilt_WallPanel`, `DaggerWallPanel_HiltComponents_SingletonC`,
+  `WallPanel_HiltComponents`, `WallPanel_ComponentTreeDeps`, and the root sentinel)
+  is emitted by Hilt's aggregating task into `build/generated/hilt/component_sources/`
+  and compiled by `hiltJavaCompileProdDebug`. Diffing the KSP output directory
+  against the old kapt one shows 5 "missing" files — **they are not missing**, they
+  moved. Verified present in the APK dex.
+
+**The AGP 10 deadline is no longer kapt-shaped, and there is an escape hatch.**
+`android.builtInKotlin=false` existed only for kapt, so that half is now closable.
+`android.newDsl=false` is a separate problem: `-Pandroid.debug.obsoleteApi=true`
+shows all three legacy-variant-API warnings come from **`kotlin-android` itself**
+(`REASON: The 'kotlin-android' plugin is currently calling this deprecated API`),
+so the flag drops only when classic KGP is replaced by AGP's built-in Kotlin —
+that is stage 2, and it is a spike, not a task: AGP's migration doc documents
+neither KSP nor `kotlin-parcelize` support under built-in Kotlin, and we use both.
+**Escape hatch if stage 2 stalls: AGP ships `com.android.legacy-kapt`**, an
+AGP-provided kapt that IS built-in-Kotlin compatible. So an AGP 10 bump is not
+gated on stage 2 succeeding.
 
 **AGP 9's DSL/Kotlin opt-out flags expire in AGP 10.0 (mid-2026).** If the AGP
 version in `build.gradle` is ever bumped to 9.x or later while this project still
