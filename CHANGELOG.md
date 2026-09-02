@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.10: kapt removed, hilt-compiler now runs on KSP (stage 1)
+
+`hilt-compiler` was the only annotation processor still on kapt — `dagger-android`
+is gone, and there is no `dagger-compiler`, Glide compiler, `lifecycle-compiler` or
+databinding kapt. It now runs under KSP `2.2.21-2.0.5` (Kotlin-locked pin), so
+**kapt is out of this project entirely**.
+
+This closes half of the AGP 10.0 deadline: `android.builtInKotlin=false` existed only
+for kapt. `android.newDsl=false` is a separate problem — it is `kotlin-android` itself
+that calls the legacy variant API — and dropping it means replacing classic KGP with
+AGP's built-in Kotlin (stage 2, deliberately not in this change). AGP's own
+`com.android.legacy-kapt` is an escape hatch if that spike stalls, so an AGP 10 bump
+is not gated on it.
+
+The two Hilt processor args are still hand-passed, now via `ksp { arg(...) }` — they
+are not auto-wired under KSP either, because `newDsl=false` is what disables the
+Variant API the Hilt plugin injects them through.
+
+Verified beyond a green build, since uninjected Hilt fields compile clean and fail at
+runtime: 6 unit tests, `smoke-device.sh` PASS, `panel-render-probe.sh` RENDERING, and
+a full per-screen DI walk (3 activities, 7 settings fragments) on a throwaway dev
+install with zero `UninitializedPropertyAccessException` and zero FATAL.
+
+Noted while verifying: `smoke-device.sh`'s monkey run injects **no** events on this
+device (`/dev/input/event0: EACCES`) despite reporting "Events injected: 500". It
+still covers launch, focus, service liveness and crash detection, but it exercises no
+UI — worth knowing for every promotion, not just this one.
+
 ### 2026-09-02 — Root cause found: MediaTek DuraSpeed blocks renderer spawn after force-stop
 
 The `SandboxedProcessService1` renderer-bind wedge (panel force-stopped/relaunched,
