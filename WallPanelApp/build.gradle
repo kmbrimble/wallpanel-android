@@ -45,15 +45,6 @@ def BROKER() { return safeLocalProperty("broker", "") }
 def BROKER_PASS() { return safeLocalProperty("brokerPass", "") }
 def BROKER_USERNAME() { return safeLocalProperty("brokerUsername", "") }
 
-// Kept deliberately for this commit. These were hand-passed because
-// android.newDsl=false disabled the Variant API the Hilt plugin injects through; with
-// the new DSL now active they should be redundant, but that is verified separately so
-// the pipeline change is not confounded with the arg change.
-ksp {
-    arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
-    arg("dagger.hilt.android.internal.projectType", "APP")
-}
-
 android {
     compileSdk 35
     lint {
