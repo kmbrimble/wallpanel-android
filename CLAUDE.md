@@ -277,6 +277,17 @@ Tags and GitHub releases for a signed APK follow the release policy in
 "Deploy and verify" — created automatically, without prompting, once both
 smoke scripts pass. Not a confirmation point.
 
+**`gh` targets `upstream` (Darknetzz) by default in this checkout, not our
+fork.** It picks the parent from the remote set, so `gh release create` fails
+with "tag exists locally but has not been pushed to Darknetzz/wallpanel-android"
+— or worse, would publish to the parent. Always pass the repo explicitly:
+
+```
+gh release create v0.12.0-kmb.9 <signed.apk> --repo kmbrimble/wallpanel-android ...
+```
+
+`git push origin <tag>` is unaffected; this is a `gh`-only trap.
+
 ## Delegation
 
 - **advisor (Fable)** is consulted for: the plan, before implementation begins,
@@ -425,6 +436,16 @@ promoting.
   Before kmb.9 this file claimed the app "has been granted
   `WRITE_SECURE_SETTINGS` via adb". That was false — verified 2026-09-02, the
   permission was not listed at all on kmb.8, whose manifest never declared it.
+
+  **Known open item, low priority — the screensaver dismisses the DuraSpeed
+  message.** `DialogUtils.showScreenSaver` calls `clearDialogs()` →
+  `hideAlertDialog()`, so the "Browser engine blocked" notice added in kmb.9 is
+  wiped when the screensaver appears (observed at ~30s in testing). Pre-existing
+  shared behaviour affecting every alert dialog, not something kmb.9 introduced.
+  **Deliberately not fixed:** per Q1 the audience for this message is a
+  developer who has just relaunched over adb and is watching the tablet, so they
+  see it well inside 30s, and the fix would touch dialog behaviour every other
+  dialog depends on. Fix only if it actually bites.
 
   **Ruled out along the way — keep this list, don't re-test any of it:**
   - **Dev app cannot obtain a renderer.** False. The dev app was observed
