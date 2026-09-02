@@ -24,9 +24,9 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:9.3.2'
+        classpath 'com.android.tools.build:gradle:9.4.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        classpath "com.google.dagger:hilt-android-gradle-plugin:2.59.2"
+        classpath "com.google.dagger:hilt-android-gradle-plugin:2.60.1"
         // Pinned to the KSP release matching Kotlin 2.2.21 exactly — KSP versions
         // are Kotlin-version-locked, so this moves only when kotlin_version does.
         classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.21-2.0.5"
@@ -52,7 +52,7 @@ versions.support = "28.0.0"
 versions.navigation = "1.0.0"
 versions.constraint_layout = "1.1.0"
 versions.stetho = "1.3.1"
-versions.dagger = "2.59.2"
+versions.dagger = "2.60.1"
 versions.archVersion = '1.1.1'
 versions.archRoomVersion = '1.1.0'
 ext.versions = versions
