@@ -100,7 +100,7 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
     lateinit var screenUtils: ScreenUtils
 
     private val mJpegSockets = ArrayList<AsyncHttpServerResponse>()
-    private var partialWakeLock: PowerManager.WakeLock? = null
+    private var screenWakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var keyguardLock: KeyguardManager.KeyguardLock? = null
     private var audioPlayer: MediaPlayer? = null
@@ -153,12 +153,29 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
         // prepare the lock types we may use
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
 
-        partialWakeLock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "wallPanel:partialWakeLock")
+        // Deprecated but functional, and kept deliberately: ACQUIRE_CAUSES_WAKEUP is the only thing
+        // here that can turn a dark screen ON (motion/face wake, MQTT wake command). It cannot be
+        // combined with PARTIAL_WAKE_LOCK, and the modern replacement setTurnScreenOn() is an
+        // Activity API this service can't reach. FLAG_KEEP_SCREEN_ON does the screen-stays-on half.
+        @Suppress("DEPRECATION")
+        screenWakeLock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "wallPanel:screenWakeLock")
 
         // wifi lock
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "wallPanel:wifiLock")
+        // WIFI_MODE_FULL is documented non-functional ("will have no impact"); LOW_LATENCY is the
+        // one that actually disables wifi power save, and its preconditions (connected, screen on,
+        // app in foreground) are exactly this app's steady state.
+        val wifiLockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            @Suppress("DEPRECATION") WifiManager.WIFI_MODE_FULL
+        }
+        wifiLock = wifiManager.createWifiLock(wifiLockMode, "wallPanel:wifiLock")
 
+        // Deprecated since API 13 and redundant on a device with no lock screen -- BaseBrowserActivity's
+        // FLAG_SHOW_WHEN_LOCKED/DISMISS_KEYGUARD/TURN_SCREEN_ON cover that case. Kept because those
+        // flags only cover that one activity, forks may run a swipe lock, and the modern replacement
+        // setShowWhenLocked() needs API 27 (minSdk is 26).
         // Some Amazon devices are not seeing this permission so we are trying to check
         val permission = "android.permission.DISABLE_KEYGUARD"
         val checkSelfPermission = ContextCompat.checkSelfPermission(this@WallPanelService, permission)
@@ -283,8 +300,8 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
     }
 
     private fun configurePowerOptions() {
-        if (partialWakeLock != null && !partialWakeLock!!.isHeld) {
-            partialWakeLock!!.acquire(3000)
+        if (screenWakeLock != null && !screenWakeLock!!.isHeld) {
+            screenWakeLock!!.acquire(3000)
         }
         if (!wifiLock!!.isHeld) {
             wifiLock!!.acquire()
@@ -299,8 +316,8 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     private fun stopPowerOptions() {
         Timber.i("Releasing Screen/WiFi Locks")
-        if (partialWakeLock != null && partialWakeLock!!.isHeld) {
-            partialWakeLock!!.release()
+        if (screenWakeLock != null && screenWakeLock!!.isHeld) {
+            screenWakeLock!!.release()
         }
         if (wifiLock != null && wifiLock!!.isHeld) {
             wifiLock!!.release()
@@ -701,8 +718,8 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     @SuppressLint("WakelockTimeout")
     private fun wakeScreenOn(wakeTime: Long) {
-        if (partialWakeLock != null && !partialWakeLock!!.isHeld) {
-            partialWakeLock?.acquire(wakeTime)
+        if (screenWakeLock != null && !screenWakeLock!!.isHeld) {
+            screenWakeLock?.acquire(wakeTime)
             wakeScreenHandler.postDelayed(clearWakeScreenRunnable, wakeTime)
             sendWakeScreenOn()
         }
@@ -714,8 +731,8 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
 
     private fun wakeScreenOff() {
         wakeScreenHandler.removeCallbacks(clearWakeScreenRunnable)
-        if (partialWakeLock != null && partialWakeLock!!.isHeld) {
-            partialWakeLock!!.release()
+        if (screenWakeLock != null && screenWakeLock!!.isHeld) {
+            screenWakeLock!!.release()
         }
         sendWakeScreenOff()
     }
