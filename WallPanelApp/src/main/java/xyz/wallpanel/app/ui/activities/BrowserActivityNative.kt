@@ -240,7 +240,6 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    // TODO handle deprecated web settings
     override fun configureWebSettings(userAgent: String) {
         val webSettings = webView.settings
         webSettings.javaScriptEnabled = true
