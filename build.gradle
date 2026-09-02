@@ -27,9 +27,11 @@ buildscript {
         classpath 'com.android.tools.build:gradle:9.4.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "com.google.dagger:hilt-android-gradle-plugin:2.60.1"
-        // Pinned to the KSP release matching Kotlin 2.2.21 exactly — KSP versions
-        // are Kotlin-version-locked, so this moves only when kotlin_version does.
-        classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.21-2.0.5"
+        // KSP 2.3.x is off the old Kotlin-locked "<kotlin>-<ksp>" versioning line and
+        // versions independently of kotlin_version. Required at 2.3.x+: every 2.2.21-*
+        // release hard-throws on AGP built-in Kotlin, while 2.3.x gates that refusal on
+        // AGP < 9.0.0-alpha14 only.
+        classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:2.3.11"
     }
 }
 
