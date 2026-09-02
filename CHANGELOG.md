@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.13: AGP 9.4.0, Hilt/Dagger 2.60.1
+
+Routine version bumps, nothing else in the diff (three lines).
+
+**AGP 9.4.0 changes nothing for us.** `android.builtInKotlin=false` and
+`android.newDsl=false` both still warn as deprecated, both still say "removed in
+version 10.0", and the default for both is still `true` — wording identical to 9.3.2.
+No new warning, no changed default. 9.4 does add `android.newDsl.optOut=:module` for
+excluding *individual modules* from the new Variant API; it is not suggested anywhere
+in our build output and would not help a single-module project. Recorded, not acted on.
+
+**The two hand-passed Hilt KSP args are now redundant under 2.60.1 — tested, not
+assumed.** Built clean with and without the `ksp { arg(...) }` block and diffed the
+generated sources: 77 files each, identical file set, identical md5 for every file. So
+2.60.1 wires `disableAndroidSuperclassValidation` and `projectType` correctly even
+under `newDsl=false`.
+
+They are **deliberately not removed** — this release is scoped to version bumps, a
+green build has never been sufficient evidence for DI on this project, and the
+comparison covers `prodDebug` only. Removing them is a separate one-line change that
+should carry its own verification.
+
+Verified: 6 unit tests, `smoke-device.sh` PASS, `panel-render-probe.sh` RENDERING,
+post-install probe RENDERING, plus a DI spot-check (a Hilt bump regenerates the
+injection code): all three activities launched clean and the settings root fragment
+rendered live injected config, with no `UninitializedPropertyAccessException`.
+
 ### 2026-09-02 — kmb.12: @OnLifecycleEvent migrated to DefaultLifecycleObserver
 
 All three `@OnLifecycleEvent` sites (`TextToSpeechModule` ×2, `DialogUtils` ×1) now use
