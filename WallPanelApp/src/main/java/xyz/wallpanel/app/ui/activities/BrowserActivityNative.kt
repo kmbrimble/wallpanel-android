@@ -250,7 +250,6 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
         webSettings.javaScriptCanOpenWindowsAutomatically = true
         webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
         webSettings.allowFileAccess = true
-        webSettings.allowFileAccessFromFileURLs = true
         webSettings.allowContentAccess = true
         webSettings.setSupportZoom(true)
         webSettings.loadWithOverviewMode = true
