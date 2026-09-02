@@ -349,20 +349,33 @@ promoting.
   the screensaver bug was ever caught. Default is one cycle
   (`SMOKE_RENDERER_CYCLES` to go deeper).
 
-  **Why production, not the dev app:** the dev app cannot obtain a WebView
-  renderer on this tablet. It requests `SandboxedProcessService1`, whose
-  ServiceRecord never gets a bound process, while production usually gets
-  `SandboxedProcessService0`. `pm clear` on dev only left it with no configured
-  URL and so no WebView at all.
+  **"The dev app cannot obtain a WebView renderer on this tablet" — disproven,
+  2026-09-02.** The dev app was later observed obtaining a renderer and
+  rendering a page on this same tablet, on the same day this claim was
+  written. Do not treat dev-vs-prod as a reliable split.
 
-  **This is not dev-only.** It was once recorded as "unexplained and deliberately
-  closed — affects only the harness, never the shipping app". That is false. The
-  production app was observed in exactly this state: after a renderer crash and a
-  force-stop restart it requested `SandboxedProcessService1:0`, whose
-  ServiceRecord sat Pending with `binder=null requested=false received=false
-  hasBound=false`, with **no** `SandboxedProcessService0:*` records at all — so it
-  is not slot exhaustion. The panel was left black with the app alive and holding
-  focus. Open, and unexplained.
+  **The `SandboxedProcessService0` vs `SandboxedProcessService1` split does
+  not predict success or dev-vs-prod — disproven, 2026-09-02.** Controlled
+  trials against production (force-stop, then either `am start -n` or a
+  `monkey -c LAUNCHER` relaunch, repeated) showed: a pass on Service0, an
+  immediate-next-attempt fail on Service1 (stuck Pending, never recovered
+  across 3 more automated retries), and a later fail on Service0 again after
+  a LAUNCHER-intent relaunch. The slot number is noise, not a signal.
+
+  **This is not dev-only, and not method-dependent.** It was once recorded as
+  "unexplained and deliberately closed — affects only the harness, never the
+  shipping app". That is false. The production app was observed in exactly
+  this state under both `am start -n` and LAUNCHER-intent relaunch: the
+  `ServiceRecord` sat Pending with `binder=null requested=false
+  received=false hasBound=false`, and critically, **no `Start proc` line is
+  ever logged for the sandboxed service in this state** — confirmed via
+  logcat correlation against trial timestamps. This rules out a zygote/OOM
+  spawn failure or slot exhaustion (only one isolated process existed
+  system-wide at the time): ActivityManagerService accepts the bind request
+  into its bookkeeping and then never acts on it. Once wedged this way, it
+  does not self-recover — repeated automated force-stop+relaunch cycles (both
+  methods) left it stuck for over a minute until a human intervened. Open,
+  and unexplained.
 
 - **If `smoke-device.sh` and `panel-render-probe.sh` both pass, promote
   automatically** via `scripts/promote.sh <signed-arm64-v8a.apk>`. Do not run
