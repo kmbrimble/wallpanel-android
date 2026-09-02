@@ -16,7 +16,6 @@
 
 plugins {
     id 'com.android.application'
-    id 'kotlin-android'
     id 'com.google.devtools.ksp'
     //id 'androidx.navigation.safeargs.kotlin'
     id 'dagger.hilt.android.plugin'
@@ -46,16 +45,10 @@ def BROKER() { return safeLocalProperty("broker", "") }
 def BROKER_PASS() { return safeLocalProperty("brokerPass", "") }
 def BROKER_USERNAME() { return safeLocalProperty("brokerUsername", "") }
 
-// Use JDK 17 for compilation so Kotlin/KSP work when running Gradle on JDK 25
-kotlin {
-    jvmToolchain(17)
-}
-
-// Hilt's Gradle plugin normally injects these via AGP's new Variant API, which
-// android.newDsl=false disables — so they never reach the processor task. That was
-// true under kapt and is still true under KSP: newDsl=false stays until kotlin-android
-// itself is dropped (KSP stage 2), so these still have to be passed by hand.
-// kapt's correctErrorTypes/javacOptions had no KSP equivalent and were dropped with it.
+// Kept deliberately for this commit. These were hand-passed because
+// android.newDsl=false disabled the Variant API the Hilt plugin injects through; with
+// the new DSL now active they should be redundant, but that is verified separately so
+// the pipeline change is not confounded with the arg change.
 ksp {
     arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
     arg("dagger.hilt.android.internal.projectType", "APP")
@@ -152,8 +145,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = '17'
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
     packaging {
         resources {
