@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# promote.sh — install a signed arm64 release to the production app, verify it
+# promote.sh — install a signed universal release to the production app, verify it
 # actually renders, and roll back automatically if it doesn't.
 #
-# Usage: scripts/promote.sh <signed-arm64-apk>
+# Usage: scripts/promote.sh <signed-apk>
 #   SMOKE_SERIAL=<serial>   override device (else scripts/adb-device.sh resolves it)
 #
 # WHY THIS EXISTS
@@ -29,7 +29,7 @@ log() { echo "[promote] $*" >&2; }
 die() { log "FAIL: $1"; echo "RESULT: FAIL"; exit 1; }
 
 APK="${1:-}"
-[[ -n "$APK" ]] || die "usage: promote.sh <signed-arm64-apk>"
+[[ -n "$APK" ]] || die "usage: promote.sh <signed-apk>"
 [[ -f "$APK" ]] || die "APK not found: $APK"
 [[ -x "$AAPT2" ]] || die "aapt2 not found or not executable at $AAPT2"
 
@@ -52,9 +52,11 @@ fi
 log "Connected to $SERIAL"
 
 # --- find the currently-installed release to roll back to on failure ---
-# By policy every promoted APK is kept at release-out/WallPanelApp-arm64-<versionName>.apk;
+# By policy every promoted APK is kept at release-out/WallPanelApp-universal-<versionName>.apk;
 # the previous release is the newest one there that isn't the one being installed now.
-PREV_APK=$(ls -t "$RELEASE_DIR"/WallPanelApp-arm64-*.apk 2>/dev/null \
+# The glob stays WallPanelApp-*.apk rather than -universal-* so releases up to kmb.15, which
+# were named -arm64- before ABI splits were dropped, remain valid rollback targets.
+PREV_APK=$(ls -t "$RELEASE_DIR"/WallPanelApp-*.apk 2>/dev/null \
     | grep -v -- '-aligned\.apk$' \
     | grep -v -- '-signed\.apk$' \
     | grep -vF "/$(basename "$APK")" \
