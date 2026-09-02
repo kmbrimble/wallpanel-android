@@ -97,3 +97,37 @@ should replace that runnable's body, not add a new timer.
   wedge is not something users hit casually.
 - (a)'s "log whether the write succeeded" is **invisible on the production build** — release
   plants no Timber tree. Use `android.util.Log` directly, or surface the result in-app.
+
+## Addendum — is there a clean (non-force-stop) exit path? (2026-09-02)
+
+A recents swipe is **not** a force-stop: it goes through `removeTask()`, which does not
+call `forceStopPackage()` and does not set the package `stopped` flag. Tested three
+candidate paths with `setting.duraspeed.enabled=1`. **All three are null results — none of
+them killed the app, so none exercised the renderer-bind path, and none wedged.**
+
+| Path | Command | Process killed? | `stopped` flag | Wedge? |
+|---|---|---|---|---|
+| Background + `am kill` | `input keyevent HOME; am kill <pkg>` | **no** — pid 2353 unchanged | false | n/a, no bind |
+| Recents swipe (synthesised) | `keyevent APP_SWITCH; input swipe` | **no** — pid 2353 unchanged | false | n/a, no bind |
+| SIGKILL | `kill -9 <pid>` | **no** — `Operation not permitted` | false | n/a |
+
+- `am kill` only kills processes "safe to kill" (cached etc.). WallPanel runs a foreground
+  service (`WallPanelService`), so it never qualifies.
+- The recents swipe **did** remove the task (`dumpsys activity recents` count 1 → 0) but the
+  process survived it — again the foreground service. Relaunching afterwards reused pid 2353
+  with the renderer still bound and produced **no new `Start proc` at all**, so no new
+  sandboxed-process bind was ever requested. Probe RENDERING throughout.
+- `kill -9` fails from shell uid 2000; this device is not rooted (`adbd cannot run as root
+  in production builds`, no `su`).
+
+**Conclusions.**
+1. **No clean adb exit path exists on this device.** Without root, `force-stop` is the only
+   way to end this app's process from adb.
+2. **A recents swipe cannot wedge the panel** — but not because it is gentler than a
+   force-stop; because it doesn't kill the app at all. Don't record this as "swipe is safe,
+   force-stop is dangerous"; the mechanism is the foreground service, not DuraSpeed.
+3. **It is therefore useless as a user recovery route** — it restarts nothing. The hoped-for
+   no-computer recovery for Stage 2(c) does not exist by this route.
+4. Whether DuraSpeed keys on `forceStopPackage` specifically or on process death generally
+   **remains untested**, because every non-force-stop path that could have isolated it is
+   unavailable here. Root would be needed to settle it, and it isn't worth rooting the panel.
