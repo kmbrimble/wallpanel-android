@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.15: remove `allowFileAccessFromFileURLs` and four dead WebSettings
+
+Subtraction only. Five setters go from `BrowserActivityNative.configureWebSettings`;
+nothing is added and no behaviour changes.
+
+**`allowFileAccessFromFileURLs = true` (the security one).** Deprecated since API 30,
+still functional on the panel's API 31. It lets JavaScript running from a `file://`
+origin read other `file://` URLs; the default has been `false` since API 16.
+
+It was inert here, but not for the reason a quick grep suggests — the app *does* load
+local content. `InternalWebClient.onReceivedError` loads
+`file:///android_asset/error_page.html` on any network error. That page contains **zero
+`<script>`**: a stylesheet `<link>`, an `<img>` and static text, all markup subresources
+that load regardless of this setting, which gates only JS-initiated cross-`file://`
+reads. No JavaScript ever executes from a `file://` origin anywhere in the app, so
+nothing could exercise the permission it granted. `ScreenSaverView`'s separate WebView
+sets none of the file-access flags and loads `http` only.
+
+**Provenance refutes the "2015 boilerplate" reading.** `3866f04` (ThanksMister, Aug
+2018) added all three `allow*` lines deliberately, in the same commit as
+`READ_EXTERNAL_STORAGE`/`WRITE_EXTERNAL_STORAGE`, message "Added permissions to access
+local files" — the intent was pointing the dashboard at a file on the SD card. **Those
+storage permissions are long gone from the manifest**, so the motivation died before the
+setting did.
+
+**`allowUniversalAccessFromFileURLs` — the genuinely dangerous sibling — is not set
+anywhere in this codebase.** Checked explicitly. `allowFileAccess` and
+`allowContentAccess` are left as-is (note `android_asset`/`android_res` are exempt from
+`allowFileAccess` on API 30+, so it protects nothing here either — a separate cleanup).
+
+**Four dead setters, separate commit.** `pluginState` (NPAPI, removed from WebView
+entirely; deprecated API 18), `setRenderPriority` (deprecated API 18, ignored by the
+Chromium renderer), `saveFormData` (no-op from API 26 on, and minSdk *is* 26),
+`databaseEnabled` (WebSQL — dead **for this app**: Home Assistant uses IndexedDB and
+localStorage, not `openDatabase()`; a sufficiently stale WebView APK could still gate on
+it, so this one is neutral-here rather than universally dead). These predate the
+`allow*` trio — they are the older enable-everything boilerplate. `javaScriptEnabled`
+and `domStorageEnabled` are load-bearing and untouched, as is the `val webSettings =
+webView.settings` local-val pattern from the kmb.5 renderer-crash fix. Deprecation
+warnings in that file: 5 → 0.
+
+**Verified beyond the usual bar**, since this touches the function the kmb.5 fix lives
+in: build + unit tests + lintVital green, `smoke-device.sh` PASS, `panel-render-probe.sh`
+RENDERING, code-reviewer found no defects, and — attended, with the user at the tablet —
+`smoke-renderer-crash.sh` PASS: app pid held, focus held, fresh renderer bound, dashboard
+rendering after the injected crash. Dashboard confirmed **interactive** by hand
+afterwards, which the probe cannot establish on its own.
+
+Also corrected two falsified CLAUDE.md claims found in passing: the Android SDK line said
+`compileSdk` 34 / `minSdk` 19 (actual: `compileSdk` 35, `targetSdk` 34, `minSdk` 26), and
+the "Open defect — `InternalWebClient.dialogUtils` is never injected" section described
+code that does not exist — `dialogUtils` is a constructor parameter passed explicitly at
+`BrowserActivityNative.kt:396`, there is no `@Inject` in the file, and `git log -S` shows
+the field-injection form never existed on this branch.
+
+
 ### 2026-09-02 — kmb.14: KSP stage 2 — AGP built-in Kotlin, both AGP 9 opt-out flags gone
 
 Replaces the classic Kotlin Gradle Plugin with AGP 9.4.0's built-in Kotlin and removes
