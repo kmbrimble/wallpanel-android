@@ -57,7 +57,9 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
   JDK, so the toolchain is the guarantee and not a duplicate of them.
   **Caveat: 17-target bytecode (major version 61) is verified on a JDK 17 host
   only. The JDK 25 host path is untested, not known-good.**
-- **Android SDK**: `compileSdk`/`targetSdk` 34, `minSdk` 19.
+- **Android SDK**: `compileSdk` 35, `targetSdk` 34, `minSdk` 26. (This line
+  previously said `compileSdk` 34 and `minSdk` 19; both were wrong — corrected
+  2026-09-02 against `WallPanelApp/build.gradle:60,70`.)
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
 
@@ -228,17 +230,17 @@ record (08-26) is on the archived `xyz.wallpanel.app` build, not ours. So this w
 a real defect, capable of wedging the panel, but never observed to trigger without
 deliberate crash injection.
 
-## Open defect — InternalWebClient.dialogUtils is never injected
+## Closed — InternalWebClient.dialogUtils IS injected (corrected 2026-09-02)
 
-`InternalWebClient.kt` declares `@Inject lateinit var dialogUtils: DialogUtils`,
-but the class is manually constructed (not built through Dagger) at
-`BrowserActivityNative.kt:396`. `dialogUtils` is read in `onReceivedSslError` —
-since it's never injected, that's a live `UninitializedPropertyAccessException` on
-any SSL error. Our HA instance is on plain HTTP so this path may never fire in
-practice, but it is a real live defect, not hypothetical. Fix is one line: pass
-`dialogUtils` through the constructor instead of relying on field injection. Fix
-whenever `InternalWebClient.kt` is next touched — not urgent enough to justify a
-standalone change.
+This section previously described a live defect: `InternalWebClient.kt` declaring
+`@Inject lateinit var dialogUtils: DialogUtils` while being manually constructed,
+giving an `UninitializedPropertyAccessException` on any SSL error. **That was
+false.** `InternalWebClient` takes `dialogUtils` as a **constructor parameter**
+(`InternalWebClient.kt:21`) and `BrowserActivityNative.kt:396` passes it
+explicitly. There is no `@Inject` anywhere in the file, and `git log -S dialogUtils`
+shows exactly one commit touching it (`135bd78`, 2022-05-02, the file's own
+introduction) — so the field-injection form this entry described never existed on
+this branch. Nothing to fix.
 
 ## Lifecycle observers — which callbacks actually fire (measured 2026-09-02)
 
