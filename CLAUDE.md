@@ -227,6 +227,46 @@ practice, but it is a real live defect, not hypothetical. Fix is one line: pass
 whenever `InternalWebClient.kt` is next touched — not urgent enough to justify a
 standalone change.
 
+## Lifecycle observers — which callbacks actually fire (measured 2026-09-02)
+
+The three `@OnLifecycleEvent` sites were migrated to `DefaultLifecycleObserver`
+(kmb.12). Measuring before and after on device produced a finding worth more than the
+migration: **two of the three callbacks never run in normal operation, and that has
+nothing to do with the annotation mechanism.**
+
+Measured with a Timber line in each callback, same sequence before and after, on the
+`kmb.dev` debug build (release plants no Timber tree):
+
+- `TextToSpeechModule.onStart` (ON_START) — **fires**, both before and after.
+- `DialogUtils.onDestroy` (ON_DESTROY) — **fires**, both before and after, proven
+  unambiguously on `SettingsActivity`, which has no `onDestroy` override and no direct
+  `clearDialogs()` call, so the log line can only have come from the observer.
+- `TextToSpeechModule.onDestroy` (ON_DESTROY) — **never observed to fire.**
+
+Two structural reasons, both pre-existing and both mechanism-independent:
+
+- **`BrowserActivityNative` is effectively never destroyed.** Its manifest entry
+  declares `configChanges="orientation|keyboardHidden|keyboard|screenSize|
+  smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"` —
+  it absorbs every configuration change itself. Rotation, density and font-scale
+  changes all fail to recreate it; `--activity-clear-task` puts the target in a new
+  task instead; `always_finish_activities=1` had no effect. It ends by process death,
+  which does not deliver ON_DESTROY. So on the panel's main activity, `DialogUtils`'
+  ON_DESTROY is dead — screensaver and alert dialogs are cleared by the **direct**
+  `clearDialogs()` calls instead (broadcast handler, `inactivityCallback`,
+  `showScreenSaver`), of which there are 9 across the codebase.
+- **`WallPanelService` never stops gracefully.** There is no `stopSelf()` anywhere in
+  it and no stop action; it is a persistent foreground service started only by
+  `startForegroundService` at `BaseBrowserActivity.kt:199` and never bound. `am
+  stopservice` returns "Error stopping service" and `pm disable-user` throws. So
+  `TextToSpeechModule.onDestroy` — the `textToSpeech.shutdown()` path — is unreachable
+  in practice. Harmless today (process death reclaims the engine), but do not assume
+  that teardown runs.
+
+**Do not re-derive this by trying harder to destroy the activity.** Every adb route was
+tried on 2026-09-02 and the manifest is the reason. If a callback on either of these
+two owners ever needs to run, the fix is an explicit call, not a lifecycle event.
+
 ## Liveness — the render probe, and what it does not cover
 
 Process liveness, window focus and a bound renderer are **not** sufficient to call the
