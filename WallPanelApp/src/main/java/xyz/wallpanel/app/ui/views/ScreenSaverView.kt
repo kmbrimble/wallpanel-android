@@ -266,7 +266,6 @@ class ScreenSaverView : RelativeLayout {
         val webSettings = binding.screenSaverWebView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.databaseEnabled = true
         webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
         webSettings.javaScriptCanOpenWindowsAutomatically = true
         if (!TextUtils.isEmpty(userAgent)) {
