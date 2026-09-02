@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.12: @OnLifecycleEvent migrated to DefaultLifecycleObserver
+
+All three `@OnLifecycleEvent` sites (`TextToSpeechModule` ×2, `DialogUtils` ×1) now use
+`DefaultLifecycleObserver`. The deprecated annotation resolved **reflectively** — there
+is no `lifecycle-compiler` on the processor path — which was not proven safe under
+minification and so was a hidden blocker on ever enabling R8. `MQTTModule` already used
+`DefaultLifecycleObserver`, so this follows existing precedent.
+
+Behaviour verified before **and** after with an identical on-device sequence:
+
+| callback | before (reflective) | after (DefaultLifecycleObserver) |
+|---|---|---|
+| `TextToSpeechModule` ON_START | fires | fires |
+| `DialogUtils` ON_DESTROY | fires | fires |
+| `TextToSpeechModule` ON_DESTROY | never fires | never fires |
+
+Identical — the migration is behaviour-preserving.
+
+**The pre-change check found more than the migration did: two of the three callbacks
+never run in normal operation**, for structural reasons that predate this change and
+are unrelated to the annotation mechanism.
+
+- **`BrowserActivityNative` is effectively never destroyed.** Its manifest declares
+  `configChanges` covering orientation, screenSize, density, fontScale, uiMode and
+  more, so it absorbs every configuration change. Density, font-scale and clear-task
+  routes all failed to recreate it and `always_finish_activities=1` had no effect; it
+  ends by process death, which delivers no ON_DESTROY. So on the panel's main activity
+  `DialogUtils`' ON_DESTROY is dead — screensaver and alert dialogs are cleared by the
+  **9 direct `clearDialogs()` calls** instead. The feared "dialogs leak across
+  screensaver cycles" does not occur by this route.
+- **`WallPanelService` never stops gracefully** — no `stopSelf()` anywhere, no stop
+  action, started only via `startForegroundService` and never bound. `TextToSpeech`'s
+  `shutdown()` path is therefore unreachable. Harmless today (process death reclaims
+  the engine), but not something to rely on.
+
+`DialogUtils.clearDialogs` stays public under its own name (9 direct callers), with
+`onDestroy(owner)` delegating to it. A Timber line was kept in each callback so this
+question is answerable next time; Timber is debug-only, so release is unaffected.
+
 ### 2026-09-02 — kmb.11: five unused dependency stacks removed, release APK down 67%
 
 Removed, each re-grepped across all source sets plus `proguard-rules.pro` before
