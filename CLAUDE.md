@@ -55,92 +55,52 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
 
-## Planned-but-not-started work
+## Modernisation status — done, verified against `master` 2026-09-02
 
-**Dagger.android → Hilt migration (scoped 2026-09-02, not started — no code, no branch).**
-Motivation: kapt→KSP for `dagger-android-processor` is a closed avenue (see below);
-Hilt supports KSP today and is Google's stated direction of travel, though there is
-no formal deprecation of `dagger.android` itself.
+The Dagger.android → Hilt migration and the post-minSdk-raise cleanup tail are
+both **merged and complete**. This section previously described them as planned
+or outstanding; that was stale. Verified on `master`:
 
-- **Single-component risk: assessed and found ABSENT.** Hilt collapses all
-  activities into one component and all fragments into one; dagger.android's own
-  migration guide warns this can surface per-target assumptions. Checked and ruled
-  out here, for three reasons: `ActivityScope` is defined but applied nowhere (no
-  real per-activity scoping exists); all 15 `@ContributesAndroidInjector` methods
-  in `AndroidBindingModule.kt` take no `modules=` argument (each generated
-  per-target subcomponent is an empty shell); and `ActivityModule` is installed
-  directly in `ApplicationComponent`, not in any per-activity subcomponent — every
-  binding is already app-wide. The migration is semantically a no-op on this axis.
-  Do not re-derive this by re-reading the DI package; the finding is structural
-  and won't change unless someone adds real per-activity scoping first.
-- **The base-class trap.** `BaseBrowserActivity` and `BaseSettingsFragment` are
-  both `@ContributesAndroidInjector` targets themselves *and* the base class other
-  injected classes extend (seven fragments inherit from `BaseSettingsFragment`).
-  Under Hilt, only the concrete leaf class gets `@AndroidEntryPoint` — a base
-  class's `@Inject` fields are only populated when a leaf subclass triggers
-  injection. This compiles clean and fails at runtime (uninjected fields), not at
-  build time. Per-screen device verification is required when this migration
-  happens, not just a green build.
-- **Dead code found during the scoping pass, safe to delete whenever:**
-  `ServiceSubcomponent` and `ServicesModule.java` — both fully unreferenced;
-  `WallPanelService` is actually wired through `AndroidBindingModule` instead.
-- **Sequencing:** fold into the dependency re-sweep, so Dagger→Hilt dependency
-  churn happens once rather than twice. Independent of the minSdk raise.
-- **kapt payoff:** after Hilt, `dagger-compiler` is the last kapt processor in the
-  build (Glide's kapt compiler is dead weight — no `@GlideModule` exists in this
-  codebase, so it can be dropped regardless of Hilt) and Hilt itself supports KSP.
-  This means the AGP 10.0 opt-out deadline (see below) becomes fully closable by
-  this migration, not just reduced.
+- **Hilt is in.** `dagger.android` is gone entirely — zero references to
+  `dagger.android`, `@ContributesAndroidInjector`, `AndroidInjection` or
+  `HasAndroidInjector`; `AndroidBindingModule`, `ServiceSubcomponent` and
+  `ServicesModule` no longer exist. `di/` holds only `ActivityModule.java` and
+  `ApplicationModule.java`.
+- **The AndroidX re-sweep is done, not owed.** Every AndroidX and test artifact
+  is at current stable (checked against `dl.google.com` on 2026-09-02):
+  appcompat 1.8.0, material 1.14.0, preference-ktx 1.2.1, swiperefreshlayout
+  1.2.0, localbroadcastmanager 1.1.0, constraintlayout 2.2.2, vectordrawable
+  1.2.0, navigation 2.10.0, lifecycle 2.11.0, test ext-junit 1.3.0, espresso
+  3.7.0, runner 1.7.0, orchestrator 1.6.1. **Do not plan another sweep** — there
+  is nothing to bump. `constraintlayout` is no longer pinned by minSdk.
+- **`android.enableJetifier` is already gone** from `gradle.properties`. The
+  entry saying it was flagged-but-not-removed was wrong.
+- Also already done: the three `androidx.legacy:*` libraries are dropped and
+  `fragment_about.xml:43` uses a plain `<Space>`; there are zero `SDK_INT >= O`
+  dead conditionals left.
 
-**Post-minSdk-raise cleanup tail (actionable once `feature/minsdk-raise` merges —
-recorded together here so these don't stay scattered across branch notes).**
-
-Numbers below verified directly against `master` on 2026-09-02 — the previous
-version of this entry mis-stated both the SDK_INT count and the AndroidX
-versions (it had picked up `feature/dependency-sweep`'s post-bump state
-instead of master's).
-
-- 5 `SDK_INT >= O` (API 26) sites, all always-true dead conditionals now that
-  minSdk is 26: `BaseBrowserActivity.kt:200`, `ScreenSaverView.kt:195`/`197`,
-  `InternalWebClient.kt:112`/`114`, `NotificationUtils.java:56`/`78`. (There is
-  no `NotificationUtils.java:416` — that file is 129 lines total; the earlier
-  entry was wrong.)
-- `androidx.legacy:legacy-support-v13`/`legacy-support-v4`/`legacy-preference-v14`
-  are retained solely because `androidx.legacy.widget.Space` is used at
-  `fragment_about.xml:43`. Replace that one view (a plain `Space` or layout
-  margin covers it) and all three legacy libraries can be dropped outright —
-  they're already terminal at 1.0.0, no newer version exists.
-- `android.enableJetifier=true` in `gradle.properties` triggers an AGP 9
-  deprecation warning and is almost certainly obsolete now. Flagged during the
-  dependency sweep but not removed, since removing it wasn't in that branch's
-  scope — verify no remaining dependency needs Jetifier, then delete.
-- `constraintlayout` is pinned at 2.1.4 on `master` only because nothing
-  between it and 2.2.x declares `minSdk <= 19` — this is a minSdk-19 artifact,
-  not a Kotlin or AGP constraint, and needs re-checking once minSdk is 26.
-- The wider AndroidX re-sweep: on `master`, `appcompat` (1.5.1), `material`
-  (1.6.1), `navigation` (2.5.2) and `lifecycle` (2.5.1) are all hardcoded
-  version pins predating even the dependency sweep. `feature/dependency-sweep`
-  (pushed, unmerged as of 2026-09-02) already bumped these to appcompat 1.6.1,
-  material 1.12.0, navigation 2.7.7, lifecycle 2.8.7 — but capped by minSdk 19,
-  per its own handback in `modernisation.MD`. **Merging the minSdk raise does
-  NOT auto-unlock further bumps** — these are static pins, not ranges, so a
-  deliberate post-merge re-sweep against current stable (now gated only by
-  compileSdk, not minSdk) is required to actually reach current stable.
+Historical findings worth not re-deriving: the Hilt single-component risk was
+assessed and found absent (no real per-activity scoping existed), and the
+base-class trap (`BaseBrowserActivity`/`BaseSettingsFragment`) is why **any DI
+change on this project needs a per-screen device walk, not just a green build** —
+uninjected fields compile clean and fail at runtime. That rule still applies.
 
 ## Toolchain notes — closed avenues and deprecation deadlines
 
-**kapt→KSP migration for Dagger is blocked upstream — closed, don't reopen.**
-Tried on `feature/kapt-to-ksp` (2026-09-01, branch deleted after folding its one
-real change into `feature/dependency-sweep`). `dagger-android-processor` has no
-KSP build (`google/dagger#4044`, open upstream), and KSP's
-`@ContributesAndroidInjector` validation requires `AndroidProcessor` on the same
-processor path as `dagger-compiler` — splitting the two across kapt/KSP fails at
-build time with unresolved bindings in `AndroidBindingModule.kt`. Verified by
-build, not assumed. Revisit only if Dagger ships KSP support for
-`dagger-android-processor`, or if `dagger-android` is removed from this codebase
-entirely (a real DI rewrite, not a toolchain swap). Until then this project stays
-on kapt, and the "Kapt currently doesn't support language version 2.0+" fallback
-warning is expected, not a bug.
+**kapt→KSP: the old blocker is moot — `dagger-android-processor` is gone.**
+The 2026-09-01 `feature/kapt-to-ksp` failure was real at the time:
+`dagger-android-processor` had no KSP build (`google/dagger#4044`), and splitting
+it from `dagger-compiler` across kapt/KSP failed with unresolved bindings in
+`AndroidBindingModule.kt`. **That avenue no longer applies** — the Hilt migration
+removed `dagger-android` from this codebase entirely, which was the documented
+condition for reopening it.
+
+Current state, read from `WallPanelApp/build.gradle` on 2026-09-02: `kapt`
+appears **exactly once**, `kapt "com.google.dagger:hilt-compiler"`. There is no
+`dagger-compiler`, no Glide compiler, no `lifecycle-compiler` and no databinding
+kapt. So the last kapt processor is **`hilt-compiler`, not `dagger-compiler`** —
+an earlier version of this file said otherwise — and Hilt supports KSP today
+(KSP `2.2.21-2.0.5` matches our Kotlin exactly). The migration is open.
 
 **AGP 9's DSL/Kotlin opt-out flags expire in AGP 10.0 (mid-2026).** If the AGP
 version in `build.gradle` is ever bumped to 9.x or later while this project still
