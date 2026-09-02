@@ -378,13 +378,39 @@ promoting.
   re-evaluates the flag when the renderer is requested; it does not latch a
   decision at force-stop time.
 
-  **The grant does not currently exist and must be re-issued after the next
-  promotion.** This file previously claimed the app "has been granted
-  `WRITE_SECURE_SETTINGS` via adb" — that was verified false on 2026-09-02:
-  `dumpsys package xyz.wallpanel.app.kmb` lists the permission not at all,
-  because kmb.8's manifest never declared it. A grant cannot exist until a build
-  carrying the manifest entry is installed. After promoting, run:
-  `adb shell pm grant xyz.wallpanel.app.kmb android.permission.WRITE_SECURE_SETTINGS`
+  **POST-PROMOTION STEP — grant the permission.** The app cannot clear the flag
+  without it, and a runtime grant is tied to the installed package, not to the
+  source. Run after promoting:
+
+  ```
+  adb shell pm grant xyz.wallpanel.app.kmb android.permission.WRITE_SECURE_SETTINGS
+  ```
+
+  Confirm it actually took — the grant is silent on success and easy to assume:
+
+  ```
+  adb shell dumpsys package xyz.wallpanel.app.kmb | grep WRITE_SECURE_SETTINGS
+  ```
+
+  Expect `granted=true`. **Redo this whenever the app is uninstalled and
+  reinstalled** — an uninstall drops the grant with the package.
+
+  Granted on kmb.9 (2026-09-02) and verified `granted=true`. Confirmed working on
+  a *release* build the same day: `WallPanelDuraSpeed: WRITE_SECURE_SETTINGS
+  held=true` / `write returned true` in logcat. That line is visible in release
+  precisely because it uses `android.util.Log` — release plants no Timber tree,
+  so a Timber call here would log nothing.
+
+  **OPEN QUESTION — does the grant survive `adb install -r`?** Not yet known. An
+  uninstall definitely drops it; an in-place reinstall over the same signature
+  may keep it. Check on the *next* promotion by grepping `dumpsys` for
+  `granted=` immediately after `promote.sh` finishes, before re-granting. If it
+  does not survive, the grant becomes a mandatory step in `promote.sh` itself
+  rather than a one-off.
+
+  Before kmb.9 this file claimed the app "has been granted
+  `WRITE_SECURE_SETTINGS` via adb". That was false — verified 2026-09-02, the
+  permission was not listed at all on kmb.8, whose manifest never declared it.
 
   **Ruled out along the way — keep this list, don't re-test any of it:**
   - **Dev app cannot obtain a renderer.** False. The dev app was observed
