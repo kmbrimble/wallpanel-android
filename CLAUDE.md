@@ -401,12 +401,26 @@ promoting.
   precisely because it uses `android.util.Log` — release plants no Timber tree,
   so a Timber call here would log nothing.
 
-  **OPEN QUESTION — does the grant survive `adb install -r`?** Not yet known. An
-  uninstall definitely drops it; an in-place reinstall over the same signature
-  may keep it. Check on the *next* promotion by grepping `dumpsys` for
-  `granted=` immediately after `promote.sh` finishes, before re-granting. If it
-  does not survive, the grant becomes a mandatory step in `promote.sh` itself
-  rather than a one-off.
+  **The grant DOES survive `adb install -r`** (measured on kmb.9, 2026-09-02:
+  `granted=true` read immediately after `promote.sh` finished, before any
+  re-grant) **and survives a reboot** (same day). So it is a genuine one-off per
+  install, not a per-promotion step, and `promote.sh` does not need to re-grant.
+  Only an uninstall drops it.
+
+  **`promote.sh` is now safe with DuraSpeed enabled — the manual flag step is
+  gone from the workflow.** Verified deliberately on kmb.9: flag set to 1, then
+  `promote.sh` run over the same build. The trigger was genuinely armed — three
+  `Force stopping xyz.wallpanel.app.kmb` lines logged (promote.sh's own
+  `am force-stop`, plus the installer's `pkg removed`) with the flag at 1 — and
+  the renderer bound anyway (`Start proc ... SandboxedProcessService0`, no
+  `Pending` record), flag was zeroed by the app, post-install probe RENDERING.
+
+  **Reboot test passed** (kmb.9, 2026-09-02): flag set to 1, tablet rebooted,
+  and the flag read `0` afterwards with nobody touching it, app auto-started via
+  its boot receiver, renderer bound, probe RENDERING. Note the logcat buffer had
+  already rolled by the time it was read (heavy post-boot load), so the flag
+  value is the evidence rather than the `held=true` log line — sound, because
+  nothing else writes that value, but it is inference not a direct log.
 
   Before kmb.9 this file claimed the app "has been granted
   `WRITE_SECURE_SETTINGS` via adb". That was false — verified 2026-09-02, the
