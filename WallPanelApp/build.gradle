@@ -16,11 +16,20 @@
 
 plugins {
     id 'com.android.application'
-    id 'kotlin-android'
-    id 'kotlin-parcelize'
     id 'com.google.devtools.ksp'
     //id 'androidx.navigation.safeargs.kotlin'
     id 'dagger.hilt.android.plugin'
+}
+
+// Replaces the KGP-provided kotlin { jvmToolchain(17) } that went with kotlin-android.
+// Gradle here may run on any JDK from 17 to 25; without this the compiling JDK silently
+// follows the Gradle daemon's JVM. compileOptions/compilerOptions below pin the *bytecode*
+// level at 17 but say nothing about which JDK compiles, so this is the guarantee, not a
+// duplicate of them. AGP's built-in Kotlin honours the Java toolchain.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
 
 def versionMajor = 0
@@ -46,21 +55,6 @@ def HASS_URL() { return safeLocalProperty("hassUrl", "") }
 def BROKER() { return safeLocalProperty("broker", "") }
 def BROKER_PASS() { return safeLocalProperty("brokerPass", "") }
 def BROKER_USERNAME() { return safeLocalProperty("brokerUsername", "") }
-
-// Use JDK 17 for compilation so Kotlin/KSP work when running Gradle on JDK 25
-kotlin {
-    jvmToolchain(17)
-}
-
-// Hilt's Gradle plugin normally injects these via AGP's new Variant API, which
-// android.newDsl=false disables — so they never reach the processor task. That was
-// true under kapt and is still true under KSP: newDsl=false stays until kotlin-android
-// itself is dropped (KSP stage 2), so these still have to be passed by hand.
-// kapt's correctErrorTypes/javacOptions had no KSP equivalent and were dropped with it.
-ksp {
-    arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
-    arg("dagger.hilt.android.internal.projectType", "APP")
-}
 
 android {
     compileSdk 35
@@ -140,7 +134,7 @@ android {
             buildConfigField "String", BASE_ENVIRONMENT, '"PROD_ENVIRONMENT"'
             applicationId "xyz.wallpanel.app"
             applicationIdSuffix ".kmb"
-            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.13"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.14"
             buildConfigField 'Integer', 'CODE', '1234'
             buildConfigField 'String', 'HASS_URL', '""'
             buildConfigField 'String', 'BROKER', '""'
@@ -153,8 +147,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = '17'
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
     packaging {
         resources {

@@ -49,8 +49,14 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
   `buildConfigField`, which is convenient for local testing but means those
   fields end up in the DEV/QA `BuildConfig` — never install a dev/qa build
   outside a throwaway test device.
-- **JDK**: Gradle itself runs on JDK 17-25; Kotlin/kapt compile against JDK 17
-  via `kotlin { jvmToolchain(17) }`.
+- **JDK**: Gradle itself runs on JDK 17-25; compilation is pinned to JDK 17 via
+  `java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }` in the
+  module. That block *replaced* the KGP-provided `kotlin { jvmToolchain(17) }`,
+  which went away with `kotlin-android` in kmb.14 — `compileOptions` and
+  `android.kotlin.compilerOptions` pin the bytecode level only, not the compiling
+  JDK, so the toolchain is the guarantee and not a duplicate of them.
+  **Caveat: 17-target bytecode (major version 61) is verified on a JDK 17 host
+  only. The JDK 25 host path is untested, not known-good.**
 - **Android SDK**: `compileSdk`/`targetSdk` 34, `minSdk` 19.
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
@@ -96,14 +102,18 @@ removed `dagger-android` from this codebase entirely, which was the documented
 condition for reopening it.
 
 **KSP stage 1 is DONE (2026-09-02, `feature/ksp-stage-1`).** `hilt-compiler`
-was the only kapt processor left; it now runs under KSP `2.2.21-2.0.5` (pinned in
-the root `build.gradle` — KSP versions are Kotlin-locked, so it moves only when
-`kotlin_version` does). **kapt is gone from this project entirely.**
+was the only kapt processor left; it now runs under KSP. **kapt is gone from this
+project entirely.**
 
-- The two Hilt processor args still have to be hand-passed, now via `ksp { arg(...) }`.
-  They are NOT auto-wired under KSP either: the reason they were hand-passed was
-  `android.newDsl=false` disabling the Variant API the Hilt plugin injects through,
-  and that is still set. They only become automatic at stage 2.
+- **KSP is NOT Kotlin-locked, and `ext.kotlin_version` no longer exists.** That was
+  true of the old `<kotlin>-<ksp>` line but not of KSP 2.3.x, which versions
+  independently of the compiler. We are on **2.3.11**, pinned in the root
+  `build.gradle`. Since the Kotlin compiler now comes from AGP (see kmb.14 below),
+  a KSP bump and a Kotlin bump are separate events — and nothing fails at
+  configuration time if they drift apart, so **re-check KSP on every AGP bump**.
+- **The two Hilt processor args are gone** (kmb.14) — they are auto-wired again now
+  that `android.newDsl=false` is removed. Verified by byte-diffing a no-args build
+  against a with-args build: identical.
 - kapt's `correctErrorTypes` and `javacOptions --release 17` had no KSP equivalent
   and were dropped with the block.
 - **Where the generated code lives changed.** Under kapt everything landed in
@@ -116,34 +126,37 @@ the root `build.gradle` — KSP versions are Kotlin-locked, so it moves only whe
   against the old kapt one shows 5 "missing" files — **they are not missing**, they
   moved. Verified present in the APK dex.
 
-**The AGP 10 deadline is no longer kapt-shaped, and there is an escape hatch.**
-`android.builtInKotlin=false` existed only for kapt, so that half is now closable.
-`android.newDsl=false` is a separate problem: `-Pandroid.debug.obsoleteApi=true`
-shows all three legacy-variant-API warnings come from **`kotlin-android` itself**
-(`REASON: The 'kotlin-android' plugin is currently calling this deprecated API`),
-so the flag drops only when classic KGP is replaced by AGP's built-in Kotlin —
-that is stage 2, and it is a spike, not a task: AGP's migration doc documents
-neither KSP nor `kotlin-parcelize` support under built-in Kotlin, and we use both.
-**Escape hatch if stage 2 stalls: AGP ships `com.android.legacy-kapt`**, an
-AGP-provided kapt that IS built-in-Kotlin compatible. So an AGP 10 bump is not
-gated on stage 2 succeeding.
+**KSP stage 2 is DONE (2026-09-02, kmb.14) — the AGP 10 deadline is CLOSED.**
+`kotlin-android` is gone, replaced by AGP's built-in Kotlin, and **both
+`android.builtInKotlin=false` and `android.newDsl=false` are removed from
+`gradle.properties`.** Nothing in this build depends on anything AGP 10.0 removes,
+so an AGP 10 bump is now a routine version bump. `-Pandroid.debug.obsoleteApi=true`
+reports zero legacy-variant-API warnings, down from three (all three had come from
+`kotlin-android` itself).
 
-**AGP 9's DSL/Kotlin opt-out flags expire in AGP 10.0 (mid-2026).** If the AGP
-version in `build.gradle` is ever bumped to 9.x or later while this project still
-needs kapt (see above), `gradle.properties` needs both:
-```
-android.builtInKotlin=false
-android.newDsl=false
-```
-`android.newDsl=false` restores the old DSL/variant API that `kotlin-android`
-(classic KGP, required for kapt) depends on; `android.builtInKotlin=false` keeps
-Kotlin compilation off AGP's built-in path so kapt can run. **Both opt-outs are
-removed in AGP 10.0** — confirmed via AGP's own docs (`developer.android.com/build/r/new-dsl`
-and `developer.android.com/build/migrate-to-built-in-kotlin`), not a blog post.
-AGP 10.0 is dated "mid-2026" in the `newDsl` docs. When AGP 10.0 ships, this
-project cannot use kapt-based Dagger with a current AGP unless the kapt→KSP
-migration above has unblocked by then — check the Dagger KSP status again at
-that point, since staying on an AGP 9.x tail indefinitely is not a real option.
+**The recorded blocker was wrong in both halves — don't re-derive it.** Stage 2 was
+documented as blocked because AGP's migration doc covers neither KSP nor
+`kotlin-parcelize` under built-in Kotlin, "and we use both". We never used both:
+a repo-wide scan found **zero `@Parcelize` and zero `Parcelable`**, so the plugin
+was applied but had never generated anything. It is deleted. That also mooted
+`google/ksp#3053` (KSP `[MissingType]` on `@Parcelize` classes under built-in
+Kotlin), which was the hazard most likely to sink the spike.
+
+The real blocker was the other one, and it was version-shaped: **every `2.2.21-*`
+KSP throws an unconditional `RuntimeException`** ("KSP is not compatible with
+Android Gradle Plugin's built-in Kotlin"), and `2.2.21-2.0.5` was the last release
+on that line — so `google/ksp#2615` was **not** resolved at the version we were
+pinned to. KSP 2.3.x gates the same refusal on AGP < 9.0.0-alpha14 only. Checked
+against the plugin artifacts themselves, not the issue tracker.
+
+**The Kotlin compiler version is no longer independently chosen.** There is no
+`kotlin-gradle-plugin` classpath entry and no `kotlin_version`; the compiler is
+whatever AGP bundles. **A future AGP bump is therefore also a Kotlin bump.**
+
+**`com.android.legacy-kapt` is NOT APPLICABLE — kept here only as history.** It was
+the escape hatch if stage 2 stalled, an AGP-provided kapt compatible with built-in
+Kotlin. Stage 2 did not stall, and this project runs KSP under built-in Kotlin with
+no kapt anywhere. Do not reach for it.
 
 ## Standing constraint
 
@@ -333,10 +346,23 @@ gh release create v0.12.0-kmb.9 <signed.apk> --repo kmbrimble/wallpanel-android 
 
 ## Release signing
 
-`assembleProdRelease` produces per-ABI split APKs plus a universal one. **Sign
-and install the `arm64-v8a` split, not the universal APK** — our tablet is
-arm64-v8a only, and the split is 19.6MB against the universal's 36.1MB for the
-same install. Build tools live at `/root/.android-sdk/build-tools/34.0.0/`.
+`assembleProdRelease` produces per-ABI split APKs plus a universal one. **Sign and
+install the `arm64-v8a` split** — that is what `promote.sh` and the release naming
+convention expect. Build tools live at `/root/.android-sdk/build-tools/34.0.0/`.
+
+**The old "19.6MB split vs 36.1MB universal" figures were stale — ignore them.**
+There have been no native libraries in this APK since kmb.11 (`unzip -l` shows zero
+`lib/` entries, and `mergeProdReleaseNativeLibs` is `NO-SOURCE`), so the ABI splits
+are degenerate: **all five outputs are byte-for-byte the same size, ~9.2MB.**
+Measured on kmb.14 and confirmed identical on master, so this is long-standing, not
+something a recent change caused.
+
+**So the splits currently buy nothing** — five identical 9.2MB APKs where one would
+do. Deliberately **kept anyway** as of kmb.14: turning them off changes the release
+artifact filename and the documented promote path, and that was not worth coupling
+to a compiler-pipeline change being promoted to a panel that needs physical access
+to recover. Disabling `splits { abi { ... } }` and signing the universal is a clean
+standalone follow-up — do it on its own, not alongside anything else.
 
 Verified signing invocation:
 
