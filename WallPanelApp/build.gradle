@@ -21,6 +21,17 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
+// Replaces the KGP-provided kotlin { jvmToolchain(17) } that went with kotlin-android.
+// Gradle here may run on any JDK from 17 to 25; without this the compiling JDK silently
+// follows the Gradle daemon's JVM. compileOptions/compilerOptions below pin the *bytecode*
+// level at 17 but say nothing about which JDK compiles, so this is the guarantee, not a
+// duplicate of them. AGP's built-in Kotlin honours the Java toolchain.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 def versionMajor = 0
 def versionMinor = 12
 def versionPatch = 0
@@ -123,7 +134,7 @@ android {
             buildConfigField "String", BASE_ENVIRONMENT, '"PROD_ENVIRONMENT"'
             applicationId "xyz.wallpanel.app"
             applicationIdSuffix ".kmb"
-            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.13"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.14"
             buildConfigField 'Integer', 'CODE', '1234'
             buildConfigField 'String', 'HASS_URL', '""'
             buildConfigField 'String', 'BROKER', '""'

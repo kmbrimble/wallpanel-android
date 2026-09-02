@@ -2,6 +2,56 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.14: KSP stage 2 — AGP built-in Kotlin, both AGP 9 opt-out flags gone
+
+Replaces the classic Kotlin Gradle Plugin with AGP 9.4.0's built-in Kotlin and removes
+`android.newDsl=false` and `android.builtInKotlin=false`. Those flags are deleted in AGP
+10.0 (mid-2026), so this closes that deadline rather than deferring it to the
+`com.android.legacy-kapt` escape hatch.
+
+**The documented blocker was wrong in both halves.** Stage 2 was recorded as blocked
+because AGP's built-in Kotlin supports neither KSP nor `kotlin-parcelize`, and we used
+both. We did not use both: a repo-wide scan found **zero `@Parcelize` and zero
+`Parcelable`** — the only reference to parcelize anywhere was the plugin declaration
+itself. Dropping it also moots `google/ksp#3053` (KSP `[MissingType]` on `@Parcelize`
+under built-in Kotlin), which was the hazard most likely to sink this.
+
+**KSP is not Kotlin-locked, and the pin we were on genuinely did refuse.** Checked
+against the artifacts, not the issue tracker: every `2.2.21-*` release throws an
+unconditional `RuntimeException` ("KSP is not compatible with Android Gradle Plugin's
+built-in Kotlin"), and `2.2.21-2.0.5` is the last of that line — so `google/ksp#2615`
+was *not* resolved at our pin. KSP 2.3.x versions independently of Kotlin and gates the
+same refusal on AGP < 9.0.0-alpha14; we are on 9.4.0. Bumped to **2.3.11**.
+
+Also removed: the two hand-passed Hilt `ksp { arg(...) }` values (the new DSL wires them
+again), the `kotlin-gradle-plugin` classpath entry, and `ext.kotlin_version`.
+
+**The Kotlin compiler is now AGP's bundled one.** A future AGP bump is therefore also a
+Kotlin bump, moving under a KSP pin that no longer moves with it, with nothing failing at
+configuration time if they drift. Re-check KSP on every AGP bump.
+
+`kotlin { jvmToolchain(17) }` went with KGP and was **replaced** by an equivalent
+`java { toolchain { languageVersion = 17 } }` rather than dropped — `compileOptions` and
+`compilerOptions` pin the bytecode level but say nothing about which JDK compiles, and
+Gradle here may run on anything from JDK 17 to 25. Caveat retained: 17-target bytecode
+(major version 61) is verified on a **JDK 17 host only**; the JDK 25 host path is
+untested, not known-good.
+
+Verified: generated Hilt/KSP sources **byte-identical to master** across all 75 files in
+both `build/generated/ksp/prodDebug/java` and
+`build/generated/hilt/component_sources/prodDebug`, so the compiler swap did not alter DI
+codegen; `kspProdDebugKotlin` genuinely runs rather than being skipped; unit tests and
+`lintVitalProdRelease` pass; `assembleProdRelease` green. Both flag warnings are gone and
+`-Pandroid.debug.obsoleteApi=true` now reports **zero** legacy-variant-API warnings, down
+from three. Full per-screen DI walk across all 12 Hilt entry points (3 activities, the
+service, all 8 settings fragments) with no `UninitializedPropertyAccessException`.
+
+Two apparent regressions found during the walk were proved **pre-existing** by building
+master and running the identical check: the Motion/Face/QR rows not responding to taps
+(they are `enabled="false"` until Camera Enabled is on), and the release build emitting
+five identically-sized APKs. Benign packaging delta: `kotlin-tooling-metadata.json` is no
+longer in the APK, as it was a KGP-only artifact.
+
 ### 2026-09-02 — kmb.13: AGP 9.4.0, Hilt/Dagger 2.60.1
 
 Routine version bumps, nothing else in the diff (three lines).

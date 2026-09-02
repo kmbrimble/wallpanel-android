@@ -31,6 +31,10 @@ buildscript {
         // refusal on AGP < 9.0.0-alpha14 only. There is no kotlin-gradle-plugin classpath
         // entry any more — the Kotlin compiler now comes from AGP's built-in Kotlin, so
         // its version tracks the AGP version rather than a pin here.
+        //
+        // CONSEQUENCE: bumping AGP now also bumps the Kotlin compiler, underneath a KSP
+        // pin that no longer moves with it. Nothing fails at configuration time if they
+        // drift apart. Re-check KSP compatibility on every AGP bump.
         classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:2.3.11"
     }
 }
