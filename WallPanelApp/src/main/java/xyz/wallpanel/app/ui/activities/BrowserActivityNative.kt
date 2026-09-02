@@ -245,8 +245,6 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
         val webSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.databaseEnabled = true
-        webSettings.saveFormData = true
         webSettings.javaScriptCanOpenWindowsAutomatically = true
         webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
         webSettings.allowFileAccess = true
@@ -254,8 +252,6 @@ class BrowserActivityNative : BaseBrowserActivity(), LifecycleObserver, WebClien
         webSettings.setSupportZoom(true)
         webSettings.loadWithOverviewMode = true
         webSettings.useWideViewPort = true
-        webSettings.pluginState = WebSettings.PluginState.ON
-        webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH)
         webSettings.mediaPlaybackRequiresUserGesture = false
 
         if (userAgent.isNotEmpty()) {
