@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — Full per-lint-ID baseline
+
+Prior entries in this changelog only ever tracked `ObsoleteSdkInt`, so an
+11-warning movement in `lintProdDebug`'s total could not be attributed to any
+specific rule. This records every lint ID present in the report so future
+deltas are attributable.
+
+Measured at git HEAD `84c1878` (clean tree). `./gradlew lintProdDebug`
+reports **0 Fatal, 9 Error, 375 Warning, 2 Hint** (386 total). `lintProdDebug`
+failing the build on Error severity is expected -- the release gate is
+`lintVital`, which only checks Fatal severity.
+
+| ID | Severity | Count |
+|---|---|---|
+| UnusedResources | Warning | 148 |
+| UseKtx | Warning | 81 |
+| RtlHardcoded | Warning | 19 |
+| TimberExceptionLogging | Warning | 17 |
+| BinaryOperationInTimber | Warning | 12 |
+| ContentDescription | Warning | 12 |
+| HardcodedText | Warning | 10 |
+| RtlSymmetry | Warning | 9 |
+| LogNotTimber | Warning | 7 |
+| WebViewClientOnReceivedSslError | Warning | 7 |
+| CheckResult | Warning | 6 |
+| KotlinNullnessAnnotation | Warning | 6 |
+| Overdraw | Warning | 6 |
+| UseAppTint | Error | 5 |
+| ObsoleteSdkInt | Warning | 5 |
+| UseCompoundDrawables | Warning | 5 |
+| NewerVersionAvailable | Warning | 4 |
+| DefaultLocale | Warning | 2 |
+| ForegroundServiceType | Error | 2 |
+| VectorPath | Warning | 2 |
+| UselessParent | Warning | 2 |
+| ReportShortcutUsage | Hint | 2 |
+| ClickableViewAccessibility | Warning | 2 |
+| IntentReset | Warning | 1 |
+| KotlinNullnessAnnotation | Error | 1 |
+| NotificationPermission | Error | 1 |
+| OldTargetApi | Warning | 1 |
+| DefaultUncaughtExceptionDelegation | Warning | 1 |
+| FragmentTagUsage | Warning | 1 |
+| HighSamplingRate | Warning | 1 |
+| GradleDependency | Warning | 1 |
+| UnsupportedChromeOsCameraSystemFeature | Warning | 1 |
+| TrustAllX509TrustManager | Warning | 1 |
+| InsecureBaseConfiguration | Warning | 1 |
+| DataExtractionRules | Warning | 1 |
+| IconXmlAndPng | Warning | 1 |
+| MonochromeLauncherIcon | Warning | 1 |
+| SetTextI18n | Warning | 1 |
+
 ### 2026-09-02 — kmb.16: wifi lock made functional, wake lock renamed, ABI splits dropped
 
 **Wifi lock: `WIFI_MODE_FULL` -> `WIFI_MODE_FULL_LOW_LATENCY`.** AOSP documents
