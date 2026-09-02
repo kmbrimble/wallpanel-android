@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+### 2026-09-02 — kmb.16: wifi lock made functional, wake lock renamed, ABI splits dropped
+
+**Wifi lock: `WIFI_MODE_FULL` -> `WIFI_MODE_FULL_LOW_LATENCY`.** AOSP documents
+`WIFI_MODE_FULL` as "non-functional and will have no impact", and the tablet agreed:
+the lock showed as held (`type=1`) while the framework counted `0 full high perf,
+0 full low latency` acquired. It was bookkeeping and nothing else. `LOW_LATENCY` is the
+mode that actually disables wifi power save, and its documented preconditions --
+connected to an AP, screen on, acquiring app in the foreground -- describe this app's
+steady state exactly. Guarded on `SDK_INT >= 29`.
+
+Confirmed on device after promotion: `type=4`, `2 full low latency` acquired, and
+`mPowerSaveDisableRequests 2`. The tablet exposes no other power-save readout; there is
+no direct before-reading of that counter, but `0 full low latency` acquired beforehand
+means it can only have been 0.
+
+**Wake lock: renamed `partialWakeLock` -> `screenWakeLock`, otherwise unchanged.** The
+field was never partial -- it is `FULL_WAKE_LOCK or ACQUIRE_CAUSES_WAKEUP`.
+`dumpsys power` shows it is never held in steady state; the screen stays on via
+`FLAG_KEEP_SCREEN_ON` (visible as WindowManager's own `SCREEN_BRIGHT_WAKE_LOCK`). But it
+is the only mechanism in the app that can turn a *dark* screen on, and it sits on the
+motion-wake, face-wake and MQTT-wake paths. It cannot be reduced to a `PARTIAL_WAKE_LOCK`
+plus an explicit screen-on call: AOSP states `ACQUIRE_CAUSES_WAKEUP` cannot be combined
+with `PARTIAL_WAKE_LOCK`, and the modern replacement `setTurnScreenOn()` is an Activity
+API a service cannot reach without new plumbing. Deprecated-but-functional stays.
+
+**Keyguard: `disableKeyguard()` kept, deliberately.** Redundant on this tablet -- there is
+no credential (`Password quality: {0=0}`, `trustManaged=0`), and
+`BaseBrowserActivity` already sets `FLAG_SHOW_WHEN_LOCKED` / `FLAG_DISMISS_KEYGUARD` /
+`FLAG_TURN_SCREEN_ON`. Kept anyway because those flags cover only that one activity, a fork
+user may run a swipe lock, and the replacement `setShowWhenLocked()` needs API 27 against
+our minSdk 26. The reasoning is now a comment at the call site rather than tribal knowledge.
+
+**`allowFileAccess = true` removed from `BrowserActivityNative` -- and it was not inert.**
+The scoping note assumed it was a no-op at minSdk 26. It wasn't: `targetSdk` is 34, and
+AOSP documents the default as `false` when targeting R and above, so this line was
+actively re-enabling filesystem access the platform switches off. Nothing needed it. The
+only local content the app loads is `file:///android_asset/error_page.html`
+(`InternalWebClient.kt:60`), and the same doc states assets and resources remain
+accessible regardless of the flag: "Note that this enables or disables file system access
+only. Assets and resources are still accessible using file:///android_asset and
+file:///android_res."
+
+**`databaseEnabled` removed from `ScreenSaverView`.** Deprecated WebSQL setting, documented
+as becoming a no-op on all Android versions now that Chromium has dropped support.
+
+**Satisfied `TODO handle deprecated web settings` comment removed.**
+
+**ABI splits dropped; the universal APK is now the release artifact.** There have been no
+native libraries in this APK since kmb.11, so the four splits were degenerate -- five
+byte-identical ~9.2MB outputs where one would do. `assembleProdRelease` now emits a single
+`WallPanelApp-prod-release-unsigned.apk` at the same 9248461 bytes. Releases are named
+`WallPanelApp-universal-<versionName>.apk`; `promote.sh`'s rollback glob was widened to
+`WallPanelApp-*.apk` rather than switched to `-universal-*`, so every release up to kmb.15
+-- all named `-arm64-` -- remains a valid rollback target. Verified end to end: promote.sh
+installed, relaunched and post-install-probed the universal APK, RENDERING.
+
 ### 2026-09-02 — kmb.15: remove `allowFileAccessFromFileURLs` and four dead WebSettings
 
 Subtraction only. Five setters go from `BrowserActivityNative.configureWebSettings`;

@@ -160,6 +160,41 @@ the escape hatch if stage 2 stalled, an AGP-provided kapt compatible with built-
 Kotlin. Stage 2 did not stall, and this project runs KSP under built-in Kotlin with
 no kapt anywhere. Do not reach for it.
 
+## Wake / wifi / keyguard locks — measured 2026-09-02, don't re-derive
+
+All three live in `WallPanelService.onCreate`, are acquired at startup, and — since the
+service never stops and the activity is never destroyed — their release paths are dead
+code. Audited on device against `dumpsys`, not against the deprecation warnings.
+
+- **`screenWakeLock`** (was `partialWakeLock`, a misnomer — it is
+  `FULL_WAKE_LOCK or ACQUIRE_CAUSES_WAKEUP`). **Never held in steady state**: every
+  acquire is timed (`acquire(3000)` in `configurePowerOptions`, `acquire(wakeTime)` in
+  `wakeScreenOn`). `dumpsys power` shows only WindowManager's `SCREEN_BRIGHT_WAKE_LOCK`,
+  which is what `FLAG_KEEP_SCREEN_ON` produces — **that**, not this lock, is why the
+  screen stays on. The lock's only job is turning a *dark* screen ON, on the motion-wake,
+  face-wake and MQTT-wake paths. **Kept deliberately**; it cannot become a
+  `PARTIAL_WAKE_LOCK` (AOSP: `ACQUIRE_CAUSES_WAKEUP` cannot be combined with it) and
+  `setTurnScreenOn()` is an Activity API the service can't reach.
+- **`wifiLock`** is `WIFI_MODE_FULL_LOW_LATENCY` since kmb.16. It was `WIFI_MODE_FULL`,
+  which AOSP documents as **"non-functional and will have no impact"** — confirmed live:
+  held as `type=1` while the framework counted `0 full low latency` acquired. Now
+  `type=4`, `2 full low latency` acquired, `mPowerSaveDisableRequests 2`. Verify with
+  `dumpsys wifi | grep -iE 'wifilock\{|Locks acquired'`.
+- **`keyguardLock.disableKeyguard()`** is **redundant on this tablet and kept anyway.**
+  There is no credential (`Password quality: {0=0}`, `mPasswordOwner=-1`,
+  `trustManaged=0`, `isKeyguardShowing=false`), and `BaseBrowserActivity` sets
+  `FLAG_SHOW_WHEN_LOCKED` / `FLAG_DISMISS_KEYGUARD` / `FLAG_TURN_SCREEN_ON` — but only on
+  that one activity. Forks may run a swipe lock, and `setShowWhenLocked()` needs API 27
+  against minSdk 26. `DISABLE_KEYGUARD` is granted, so the call does run.
+
+**The walk-up wake path does not depend on the wake lock for its visible effect.** Motion
+or face detection calls `configurePowerOptions()` *and* `wakeScreen()`; the visible part —
+screensaver dismissed, brightness restored — comes from the broadcast:
+`BROADCAST_SCREEN_WAKE` → `stopDisconnectTimer()` → `resetInactivityTimer()` →
+`hideScreenSaver()` + `resetScreenBrightness(false)`. The wake lock only matters when the
+display is genuinely off. Reading `stopDisconnectTimer` as a no-op (it isn't — see
+`BaseBrowserActivity.kt:292`) is the easy mistake here.
+
 ## Standing constraint
 
 **We build and sign our own APKs.** Never install a prebuilt APK/AAB from a
@@ -324,7 +359,7 @@ with "tag exists locally but has not been pushed to Darknetzz/wallpanel-android"
 — or worse, would publish to the parent. Always pass the repo explicitly:
 
 ```
-gh release create v0.12.0-kmb.9 <signed.apk> --repo kmbrimble/wallpanel-android ...
+gh release create v0.12.0-kmb.16 <signed.apk> --repo kmbrimble/wallpanel-android ...
 ```
 
 `git push origin <tag>` is unaffected; this is a `gh`-only trap.
@@ -348,28 +383,25 @@ gh release create v0.12.0-kmb.9 <signed.apk> --repo kmbrimble/wallpanel-android 
 
 ## Release signing
 
-`assembleProdRelease` produces per-ABI split APKs plus a universal one. **Sign and
-install the `arm64-v8a` split** — that is what `promote.sh` and the release naming
-convention expect. Build tools live at `/root/.android-sdk/build-tools/34.0.0/`.
+**ABI splits are gone as of kmb.16.** `assembleProdRelease` produces exactly one
+output, `WallPanelApp-prod-release-unsigned.apk` (~9.2MB). Sign that. Build tools live
+at `/root/.android-sdk/build-tools/34.0.0/`.
 
-**The old "19.6MB split vs 36.1MB universal" figures were stale — ignore them.**
-There have been no native libraries in this APK since kmb.11 (`unzip -l` shows zero
-`lib/` entries, and `mergeProdReleaseNativeLibs` is `NO-SOURCE`), so the ABI splits
-are degenerate: **all five outputs are byte-for-byte the same size, ~9.2MB.**
-Measured on kmb.14 and confirmed identical on master, so this is long-standing, not
-something a recent change caused.
+Why they went: there have been no native libraries in this APK since kmb.11 (`unzip -l`
+shows zero `lib/` entries, `mergeProdReleaseNativeLibs` is `NO-SOURCE`), so the four
+splits were degenerate — five byte-identical ~9.2MB APKs where one would do. Removing
+`splits { abi { ... } }` changed the byte count not at all (9248461 before and after).
+**Do not reinstate them** unless a native dependency actually lands.
 
-**So the splits currently buy nothing** — five identical 9.2MB APKs where one would
-do. Deliberately **kept anyway** as of kmb.14: turning them off changes the release
-artifact filename and the documented promote path, and that was not worth coupling
-to a compiler-pipeline change being promoted to a panel that needs physical access
-to recover. Disabling `splits { abi { ... } }` and signing the universal is a clean
-standalone follow-up — do it on its own, not alongside anything else.
+Release artifacts are now named `release-out/WallPanelApp-universal-<versionName>.apk`.
+`promote.sh`'s rollback glob is `WallPanelApp-*.apk`, deliberately wider than
+`-universal-*`, so every release up to kmb.15 — all named `-arm64-` — stays a valid
+rollback target. Verified end to end on kmb.16.
 
 Verified signing invocation:
 
 ```
-zipalign -p -f 4 <unsigned-arm64-v8a.apk> <aligned.apk>
+zipalign -p -f 4 <unsigned.apk> <aligned.apk>
 apksigner sign --ks /projects/wallpanel-release.jks --ks-key-alias wallpanel \
   --ks-pass file:/projects/.env.keystore-pass --out <signed.apk> <aligned.apk>
 apksigner verify --print-certs --verbose <signed.apk>
@@ -531,7 +563,7 @@ promoting.
     working around some of the time.
 
 - **If `smoke-device.sh` and `panel-render-probe.sh` both pass, promote
-  automatically** via `scripts/promote.sh <signed-arm64-v8a.apk>`. Do not run
+  automatically** via `scripts/promote.sh <signed.apk>`. Do not run
   a bare `adb install -r` to promote — see why below.
 
   **`smoke-device.sh` + `panel-render-probe.sh` only clear the build for
@@ -580,7 +612,7 @@ promoting.
 - **If either fails, do not promote.** Report and stop. A failing render probe
   means the panel is wedged and needs physical attention — say so loudly rather
   than retrying, and never `pm clear` (it wipes the HA config).
-- Keep every promoted APK at `release-out/WallPanelApp-arm64-<versionName>.apk`
+- Keep every promoted APK at `release-out/WallPanelApp-universal-<versionName>.apk`
   and attach it to its GitHub release. **Never delete older ones.**
 - **Rollback (manual, by the user only)**:
   ```
