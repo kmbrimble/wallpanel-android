@@ -37,6 +37,89 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
   comparison only. **Do not merge anything from it** without a separate
   review.
 
+## Non-negotiables — read before "fixing" anything
+
+Each of these looks like a bug, a smell, or a tidy-up target. None is. One line
+each; the named section or file holds the full story.
+
+**Where this index disagrees with the section it names, the section wins** — it
+is the record, this is only the pointer. Changing a constraint means changing
+both, in the same commit.
+
+**Do not change, and do not reintroduce:**
+
+- **The tablet routes through Kieren.** The scripted path (`smoke-device.sh` →
+  `panel-render-probe.sh` → `promote.sh`) is the one sanctioned automated route
+  to the device; anything else that touches it, or could wedge it, goes through
+  him first — he is the only physical recovery. Never `pm clear` (it wipes the
+  HA config). Never build automation that assumes adb survives a reboot: it
+  does not, wireless debugging comes back OFF. ("Deploy and verify")
+- **We build and sign our own APKs** — never install a prebuilt APK from any
+  release page, CI artifact or third party, even `upstream`'s. ("Standing
+  constraint")
+- **Keystore and password stay outside the repo** —
+  `/projects/wallpanel-release.jks` and `/projects/.env.keystore-pass`. Never
+  move or copy either into the repo; no credential is committed anywhere.
+  ("Release signing")
+- **Never re-add `webSettings.allowFileAccess = true`** (removed in `5281e47`).
+  It was **not** inert: `targetSdk` is 34 and AOSP documents the default as
+  false when targeting R and above, so the line was actively re-enabling
+  filesystem access the platform switches off. Nothing needs it — the only
+  local document the app loads is `file:///android_asset/error_page.html`
+  (`InternalWebClient.kt:60`), and assets stay readable regardless of the flag.
+  **This constraint exists as an absence:** there is no comment in the WebView
+  code marking it, so a local-file feature would set it back and nothing would
+  object. Its siblings differ and are worth keeping straight —
+  `allowFileAccessFromFileURLs` (removed in `0d81701`) genuinely *was* inert, as
+  no JavaScript ever runs from a `file://` origin here, and
+  `allowUniversalAccessFromFileURLs`, the worst of the three, has never been set
+  in this codebase. Keep all three as they are.
+- **The 35s idle wait in `scripts/smoke-renderer-crash.sh` is load-bearing** —
+  never weaken, shorten or skip it to get a green; it is the only reason the
+  screensaver bug was ever caught. The script itself is retired from the release
+  path — do not run it unattended. ("Deploy and verify")
+- **`screenWakeLock` being a `FULL_WAKE_LOCK` is deliberate**
+  (`WallPanelService.onCreate`) — it cannot become a `PARTIAL_WAKE_LOCK`
+  (`ACQUIRE_CAUSES_WAKEUP` will not combine with it) and `setTurnScreenOn()` is
+  an Activity API a service cannot reach. ("Wake / wifi / keyguard locks")
+- **No ABI splits, and do not reinstate them** — there are no native libraries
+  in this APK, so the splits produced five byte-identical outputs. ("Release
+  signing")
+- **Never delete older APKs under `release-out/`** — they are the rollback set
+  `promote.sh` depends on. ("Deploy and verify")
+- **Never merge anything from the `plus` remote** without a separate review.
+  ("Remotes")
+- **Do not reinstate mDNS adb discovery** — multicast does not cross this
+  container's Docker bridge, so it can only ever return zero services; it read
+  as functional while being dead code. ("Deploy and verify")
+
+**Do not assume — verify these before acting on them:**
+
+- **Cleartext HTTP is permitted to every domain**, at
+  `WallPanelApp/src/main/res/xml/network_config.xml:4`
+  (`<base-config cleartextTrafficPermitted="true" />`). The manifest does not
+  say so — it only points at that file (`AndroidManifest.xml:55`), so reading
+  the manifest alone gives the opposite impression. Inherited from the archive
+  baseline and assessed but never narrowed (`REVIEW.md:57-58`). Tightening it is
+  a real change with tablet-facing risk, not a tidy-up — route it through
+  Kieren.
+- **The kmb release number is a hardcoded literal.**
+  `WallPanelApp/build.gradle:129` ends `-kmb.16` while `versionCode` (`:72`) is
+  computed, so cutting kmb.17 means editing that string by hand — and the
+  release artifact name follows that literal, not `versionName`.
+- **`gh` targets `upstream` (Darknetzz) by default in this checkout**, not our
+  fork — always pass `--repo kmbrimble/wallpanel-android` on release and tag
+  commands. `git push origin <tag>` is unaffected. ("Git workflow")
+- **Any DI change needs a per-screen device walk, not just a green build** —
+  uninjected fields in the `BaseBrowserActivity` / `BaseSettingsFragment`
+  hierarchy compile clean and fail at runtime. ("Modernisation status")
+- **The `WRITE_SECURE_SETTINGS` grant is per-install.** It survives
+  `adb install -r` and a reboot, but an uninstall drops it with the package —
+  re-grant and confirm `granted=true`, or the DuraSpeed wedge risk returns.
+  ("Deploy and verify")
+- **Anything that must be visible in release logcat uses `android.util.Log`,
+  not Timber** — release plants no Timber tree. ("Deploy and verify")
+
 ## Build
 
 ```
@@ -62,6 +145,33 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
   2026-09-02 against `WallPanelApp/build.gradle:60,70`.)
 - Firebase Crashlytics / Google Services plugins only apply if
   `google-services.json` exists in the module — safe to build without it.
+
+## Tests — what a RED baseline can and cannot mean here
+
+```
+./gradlew testProdDebugUnitTest
+```
+
+Verified passing on a JDK 17 host, 2026-09-03.
+
+- **Coverage is exactly one class.** `CameraFpsPinTest` exercises
+  `CameraFpsPin.chooseRange` — pure JVM logic with no Android dependency. A
+  RED-first workflow is therefore only possible for changes whose logic is, or
+  can be pulled into, a plain class like that one. When a feature allows that,
+  do it that way.
+- **For everything else there is no automated harness — say so, do not invent
+  one.** Behavioural verification is the device path: `scripts/smoke-device.sh`,
+  then `scripts/panel-render-probe.sh` (see "Deploy and verify"). Both touch the
+  physical tablet, so both route through Kieren.
+- One instrumented test exists — `BrowserActivityNativeTest`, task
+  `connectedProdDebugAndroidTest`. It needs a connected device, so the same rule
+  applies, and it is not part of the release path.
+- Lint: `./gradlew lintProdDebug`. A full per-ID baseline is recorded in
+  CHANGELOG.md by commit `39c772a`, measured at HEAD `84c1878` — trace any total
+  movement to specific rule IDs against it rather than reporting a bare delta.
+  Release builds gate on lintVital (Fatal-severity only) by design
+  (`WallPanelApp/build.gradle:61-67`), and every lint task is auto-disabled on
+  JDK 25+ hosts (`WallPanelApp/build.gradle:223-226`, lint worker bug).
 
 ## Modernisation status — done, verified against `master` 2026-09-02
 
@@ -393,7 +503,8 @@ splits were degenerate — five byte-identical ~9.2MB APKs where one would do. R
 `splits { abi { ... } }` changed the byte count not at all (9248461 before and after).
 **Do not reinstate them** unless a native dependency actually lands.
 
-Release artifacts are now named `release-out/WallPanelApp-universal-<versionName>.apk`.
+Release artifacts are now named `release-out/WallPanelApp-universal-<version>.apk`
+(e.g. `WallPanelApp-universal-0.12.0.0-kmb.16.apk`).
 `promote.sh`'s rollback glob is `WallPanelApp-*.apk`, deliberately wider than
 `-universal-*`, so every release up to kmb.15 — all named `-arm64-` — stays a valid
 rollback target. Verified end to end on kmb.16.
@@ -465,7 +576,8 @@ promoting.
   the setting is re-applied.
 
   **The app now clears the flag itself on startup (built 2026-09-02, commit
-  `ef7c32f`, NOT yet promoted).** `WallPanel.onCreate` calls
+  `ef7c32f`, promoted the same day as kmb.9 — see the grant record
+  below).** `WallPanel.onCreate` calls
   `DuraSpeed.disableIfPermitted()` before any WebView exists, writing
   `setting.duraspeed.enabled=0` when `WRITE_SECURE_SETTINGS` is held, and doing
   nothing (never crashing) when it isn't. Measured on device, n=2 with a
@@ -612,8 +724,9 @@ promoting.
 - **If either fails, do not promote.** Report and stop. A failing render probe
   means the panel is wedged and needs physical attention — say so loudly rather
   than retrying, and never `pm clear` (it wipes the HA config).
-- Keep every promoted APK at `release-out/WallPanelApp-universal-<versionName>.apk`
-  and attach it to its GitHub release. **Never delete older ones.**
+- Keep every promoted APK at `release-out/WallPanelApp-universal-<version>.apk`
+  (e.g. `WallPanelApp-universal-0.12.0.0-kmb.16.apk`) and attach it to its
+  GitHub release. **Never delete older ones.**
 - **Rollback (manual, by the user only)**:
   ```
   adb install -r -d release-out/<older>.apk
