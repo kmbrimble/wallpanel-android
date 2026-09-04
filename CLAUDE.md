@@ -5,6 +5,14 @@ tablet on the home LAN. The app holds HA credentials (and optionally MQTT
 broker credentials), so trust in every change matters more than usual for a
 hobby project.
 
+Single Gradle module `:WallPanelApp` (`settings.gradle`), package
+`xyz.wallpanel.app`, Kotlin with some legacy Java, Hilt + KSP. App code sits
+under `WallPanelApp/src/main/java/xyz/wallpanel/app/`: `network/` (the
+foreground service, MQTT, the HTTP server), `ui/activities` + `ui/fragments`
+(browser and settings), `modules/` (camera, motion, sensors, TTS),
+`persistence/Configuration.kt`, `utils/`, `di/`. Device tooling lives in
+`scripts/` and `logcat-capture.sh`.
+
 ## Why this fork exists
 
 - **TheTimeWalker/wallpanel-android** is the original project. Maintained
@@ -36,6 +44,117 @@ archive baseline and Darknetzz's master, and its go/no-go recommendation.
 - `plus` — 000-i/wallpanel-plus — a parallel fork, kept around for future
   comparison only. **Do not merge anything from it** without a separate
   review.
+
+## Code review
+
+Calibration for `code-diff-reviewer`, `code-audit` and `code-security-audit`.
+All three are repo-scoped and advisory; the four items below are what this
+repository cannot tell them about itself.
+
+**Exposure — LAN-only, with an unauthenticated control surface on the LAN.**
+The panel is a Lenovo TB-J616F at `192.168.0.52` on the flat home LAN. It is
+**not** in the Cloudflare tunnel ingress list, is behind no reverse proxy, and
+has no port forward — nothing outside the LAN can reach it. On the LAN it
+exposes:
+
+- **HTTP on TCP 2971**, `AsyncHttpServer` started in `WallPanelService.startHttp`
+  (`:445`), port from `default_setting_http_port`. On this panel the REST
+  endpoints are **on** (`httpRestEnabled`) and MJPEG is **off**. Both default to
+  `false` in resources, so the repo alone reads as "no listener is ever started" —
+  that is wrong for this deployment.
+- **No authentication on it at all** — no token, no TLS, no origin check.
+  `POST /api/command` reaches `processCommand`, which includes `eval` →
+  `BROADCAST_ACTION_JS_EXEC` → `webView.evaluateJavascript`
+  (`WallPanelService.kt:747` → `BaseBrowserActivity.kt:85` →
+  `BrowserActivityNative.kt:229`), so anything on the LAN can run arbitrary
+  JavaScript inside the authenticated Home Assistant session. Inherited from
+  upstream and **accepted for a LAN-only panel — report it as context, not as a
+  finding.** It stops being accepted the moment the exposure line above changes.
+- **MQTT**, enabled against a LAN broker. The `command` topic
+  (`MqttUtils.TOPIC_COMMAND`) feeds the same `processCommand`, so it has
+  identical reach, `eval` included.
+- **adb over TCP on 5555**, left enabled for the harness (`scripts/adb-device.sh`).
+
+**Modules that own data users rely on.** There is no database, no money, no
+quantities and no audit trail here — no Room, no SQLite, no file writes outside
+logs. What little state exists is small and physically expensive to lose:
+
+- `persistence/Configuration.kt` — the **only** store, default SharedPreferences.
+  Holds the HA dashboard URL, MQTT broker/username/password, and the settings
+  PIN. Corrupt or drop it and somebody re-enters all of it by hand on a
+  wall-mounted tablet. `settingsCode` (`:37`) runs a one-way, one-shot legacy
+  int→string migration **inside its getter**, overwriting the old key on first
+  read, with no test over it.
+- `utils/ScreenUtils.kt` — writes device-global
+  `Settings.System.SCREEN_BRIGHTNESS` / `..._MODE` (`:69`, `:71`, `:84`, `:105`,
+  `:132`, `:137`) under `WRITE_SETTINGS`. A bug here changes the tablet, not the
+  app: brightness 1 is indistinguishable from a dead panel and needs physical
+  recovery.
+- `scripts/promote.sh` with `release-out/` — the rollback set. `release-out/` is
+  **gitignored**, so the rollback glob points at a directory that does not exist
+  in the checkout. It exists on the container, and deleting from it is what
+  makes a rollback impossible.
+
+**Infrastructure this repo depends on but does not contain.** All of this is
+resolved outside the checkout. "Nothing here implements X" is not a defect for
+any of them:
+
+- **Release signing.** There is no `signingConfig` anywhere in Gradle, by design.
+  `assembleProdRelease` emits an unsigned APK; `zipalign` + `apksigner` sign it
+  out of band using `/projects/wallpanel-release.jks` and
+  `/projects/.env.keystore-pass`, both outside the repo. ("Release signing")
+- **Android SDK build-tools** at `/root/.android-sdk/build-tools/34.0.0`
+  (`aapt2`, `zipalign`, `apksigner`) — baked into the container image and
+  referenced directly by `scripts/promote.sh`.
+- **`local.properties`** supplies `code`, `hassUrl`, `broker`, `brokerUsername`,
+  `brokerPass` to the dev/qa `buildConfigField`s (`WallPanelApp/build.gradle:53-57`).
+  Gitignored and normally absent, in which case the helper returns empty strings.
+- **The panel's own settings.** HA URL, MQTT broker and credentials, and every
+  feature toggle live in on-device SharedPreferences. The resource defaults are
+  upstream's (`default_setting_app_launchurl` is `https://wallpanel.xyz`) and say
+  nothing about what this panel is actually running.
+- **`WRITE_SECURE_SETTINGS` is granted out of band** by `adb pm grant`, per
+  install. The manifest declares it; nothing in the repo grants it, and
+  `utils/DuraSpeed.kt` silently no-ops without it. ("Deploy and verify")
+- **MediaTek DuraSpeed** is a vendor component compiled into this tablet's
+  `system_server`. `DuraSpeed.kt` exists only to switch it off; the thing it
+  defends against is in neither this repo nor AOSP. ("Deploy and verify")
+- **A physical tablet reachable over adb-TCP** at `$WALLPANEL_TABLET_IP`
+  (default `192.168.0.52`) is what everything in `scripts/` and
+  `logcat-capture.sh` talks to; `.claude/settings.json` starts the capture on
+  every session.
+- **Hilt's root component is generated outside the KSP output tree**, into
+  `build/generated/hilt/component_sources/`. Diffing against
+  `build/generated/ksp/` shows five files apparently missing; they are not.
+  ("Toolchain notes")
+- **There is no CI.** `.github/` holds issue templates and a funding file only.
+  Nothing builds, tests, signs or releases on push — every gate is local or
+  on-device.
+
+**Test reality — thin, and that thinness is the highest-signal input here.**
+
+- **Actually exercised, branches included:** `CameraFpsPin.chooseRange`, and
+  nothing else. `CameraFpsPinTest` covers six cases including the tie-break and
+  the empty-input null return. That is the entire unit suite.
+- **Happy path only:** `scripts/smoke-device.sh` installs the dev build,
+  launches it, waits, throws a monkey at it, and checks pid / window focus /
+  service liveness. It proves the app starts and survives random taps; it never
+  drives MQTT, the HTTP endpoints, the camera, the settings screens, TTS, the
+  screensaver, or any error branch. `scripts/panel-render-probe.sh` proves only
+  that pixels are changing.
+- **No coverage whatsoever:** all of `network/WallPanelService.kt` (46 KB — HTTP
+  server, MQTT, command dispatch), `Configuration.kt` including the PIN
+  migration, `ScreenUtils.kt`, `DuraSpeed.kt`, both WebView clients, and the
+  whole activity/fragment tree. `BrowserActivityNativeTest` is misnamed — it
+  tests `BrowserUtils.parseIntent`, needs a connected device, and is not in the
+  release path.
+- **Consequence:** a diff touching anything in that last list has, by
+  construction, no test exercising its new branch. Both of the defects recorded
+  in this file — the cached `WebSettings` renderer-rebuild bug and the
+  non-functional `WIFI_MODE_FULL` wifi lock — sat in exactly that untested
+  region, and the device path kept passing while they were live. Weight an
+  untested changed branch accordingly rather than treating a green smoke run as
+  evidence.
 
 ## Non-negotiables — read before "fixing" anything
 
@@ -143,8 +262,10 @@ both, in the same commit.
 - **Android SDK**: `compileSdk` 35, `targetSdk` 34, `minSdk` 26. (This line
   previously said `compileSdk` 34 and `minSdk` 19; both were wrong — corrected
   2026-09-02 against `WallPanelApp/build.gradle:60,70`.)
-- Firebase Crashlytics / Google Services plugins only apply if
-  `google-services.json` exists in the module — safe to build without it.
+- **No Firebase, Crashlytics or Google Services in this build at all.** The
+  plugins and the conditional apply-block are gone; `google-services.json` is
+  irrelevant here. (This line previously said the plugins apply conditionally on
+  that file — stale, corrected 2026-09-04 against `WallPanelApp/build.gradle`.)
 
 ## Tests — what a RED baseline can and cannot mean here
 
