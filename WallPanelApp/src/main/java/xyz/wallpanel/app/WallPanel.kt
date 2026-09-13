@@ -28,6 +28,7 @@ import timber.log.Timber
 import xyz.wallpanel.app.utils.LauncherShortcuts
 import xyz.wallpanel.app.utils.DuraSpeed
 import xyz.wallpanel.app.utils.WallpanelDebugTree
+import xyz.wallpanel.app.utils.WirelessDebugging
 
 
 @HiltAndroidApp
@@ -37,6 +38,8 @@ class WallPanel : Application() {
         super.onCreate()
         // Before anything builds a WebView: DuraSpeed can otherwise suppress the renderer.
         DuraSpeed.disableIfPermitted(this)
+        // A reboot resets Wireless Debugging to off, not just a fresh install.
+        WirelessDebugging.enableIfPermitted(this)
         if (BuildConfig.DEBUG) {
             // Gives clickable links to the issue in the Android Studio Logcat
             Timber.plant(WallpanelDebugTree())

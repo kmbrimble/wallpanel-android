@@ -69,7 +69,7 @@ android {
         applicationId "xyz.wallpanel.app"
         minSdkVersion 26
         targetSdk 34
-        versionCode versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild + 14
+        versionCode versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild + 15
         versionName "${versionMajor}.${versionMinor}.${versionPatch}.${versionBuild}"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -126,7 +126,7 @@ android {
             buildConfigField "String", BASE_ENVIRONMENT, '"PROD_ENVIRONMENT"'
             applicationId "xyz.wallpanel.app"
             applicationIdSuffix ".kmb"
-            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.16"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch} Build ${versionBuild}-kmb.17"
             buildConfigField 'Integer', 'CODE', '1234'
             buildConfigField 'String', 'HASS_URL', '""'
             buildConfigField 'String', 'BROKER', '""'

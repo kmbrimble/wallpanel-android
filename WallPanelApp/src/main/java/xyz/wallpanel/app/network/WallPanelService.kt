@@ -74,6 +74,7 @@ import xyz.wallpanel.app.utils.MqttUtils.Companion.COMMAND_WAKETIME
 import xyz.wallpanel.app.utils.MqttUtils.Companion.VALUE
 import xyz.wallpanel.app.utils.NotificationUtils
 import xyz.wallpanel.app.utils.ScreenUtils
+import xyz.wallpanel.app.utils.WirelessDebugging
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.*
@@ -284,6 +285,10 @@ class WallPanelService : LifecycleService(), MQTTModule.MQTTListener {
             }
         }
         hasNetwork.set(true)
+        // Wireless Debugging resets to off on every reboot; the process-start attempt in
+        // WallPanel.onCreate can lose the race with wifi coming up and get bounced back to
+        // 0 by the framework, so re-assert here too, once wifi is actually associated.
+        WirelessDebugging.enableIfPermitted(this)
     }
 
     private fun handleNetworkDisconnect() {

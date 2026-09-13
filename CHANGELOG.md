@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### 2026-09-13 — kmb.17: re-enable Wireless Debugging after reboot
+
+Android resets the Android 11+ Wireless Debugging toggle
+(`Settings.Global "adb_wifi_enabled"`) to off on every reboot; there is no OS
+setting to make it sticky, and until now recovering it needed physical access
+to the tablet's Developer options screen. Mirrors the existing
+[DuraSpeed](WallPanelApp/src/main/java/xyz/wallpanel/app/utils/DuraSpeed.kt)
+fix exactly: a `WirelessDebugging` object that checks
+`WRITE_SECURE_SETTINGS` (already granted per-install, same as DuraSpeed) and
+no-ops silently without it, called from `WallPanel.onCreate` on every process
+start.
+
+**Re-asserted from `WallPanelService.handleNetworkConnect()` too, not just at
+process start.** `AdbDebuggingManager` bounces the write straight back to 0 if
+wifi isn't associated yet, and a boot-time process start can easily race
+ahead of wifi coming up. `handleNetworkConnect()` is the service's existing
+`ConnectionLiveData` hook, already firing exactly when wifi becomes
+available — reused rather than adding a new timer.
+
+**Posture change, stated explicitly:** Wireless Debugging goes from
+human-gated per boot (the OS default) to always-on whenever
+`WRITE_SECURE_SETTINGS` is held. Enabling it only starts the pairing-required
+listener — it does not itself grant access — and adb-over-TCP is already kept
+on deliberately for this project's harness (see CLAUDE.md "Deploy and
+verify"), so this closes a gap in an already-accepted posture rather than
+opening a new one.
+
+**Unverified on device.** This needs a real reboot + logcat check on the
+tablet before CLAUDE.md's "a reboot leaves adb off, not moved" finding
+("Deploy and verify") can be revisited — this entry does not change that
+finding, only proposes a fix for it. No automated test is possible; the logic
+is a thin wrapper over `Settings.Global`, same as `DuraSpeed`, which also
+has no unit coverage.
+
 ### 2026-09-02 — Full per-lint-ID baseline
 
 Prior entries in this changelog only ever tracked `ObsoleteSdkInt`, so an
