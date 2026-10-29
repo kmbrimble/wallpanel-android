@@ -101,8 +101,8 @@ any of them:
 
 - **Release signing.** There is no `signingConfig` anywhere in Gradle, by design.
   `assembleProdRelease` emits an unsigned APK; `zipalign` + `apksigner` sign it
-  out of band using `/projects/wallpanel-release.jks` and
-  `/projects/.env.keystore-pass`, both outside the repo. ("Release signing")
+  out of band using `/projects/wallpanel-release.jks` (a file, outside the repo)
+  and the keystore password in unraid-secretsman as `wallpanel/keystore_pass`. ("Release signing")
 - **Android SDK build-tools** at `/root/.android-sdk/build-tools/34.0.0`
   (`aapt2`, `zipalign`, `apksigner`) — baked into the container image and
   referenced directly by `scripts/promote.sh`.
@@ -177,8 +177,9 @@ both, in the same commit.
   release page, CI artifact or third party, even `upstream`'s. ("Standing
   constraint")
 - **Keystore and password stay outside the repo** —
-  `/projects/wallpanel-release.jks` and `/projects/.env.keystore-pass`. Never
-  move or copy either into the repo; no credential is committed anywhere.
+  `/projects/wallpanel-release.jks` (file) and secretsman
+  `wallpanel/keystore_pass`. Never move or copy either into the repo, and never
+  put the password on argv or in a file (`env:` forms only); no credential is committed anywhere.
   ("Release signing")
 - **Never re-add `webSettings.allowFileAccess = true`** (removed in `5281e47`).
   It was **not** inert: `targetSdk` is 34 and AOSP documents the default as
@@ -634,13 +635,16 @@ Verified signing invocation:
 
 ```
 zipalign -p -f 4 <unsigned.apk> <aligned.apk>
-apksigner sign --ks /projects/wallpanel-release.jks --ks-key-alias wallpanel \
-  --ks-pass file:/projects/.env.keystore-pass --out <signed.apk> <aligned.apk>
+hl exec --secret KEYSTORE_PASS=wallpanel/keystore_pass -- \
+  apksigner sign --ks /projects/wallpanel-release.jks --ks-key-alias wallpanel \
+  --ks-pass env:KEYSTORE_PASS --out <signed.apk> <aligned.apk>
 apksigner verify --print-certs --verbose <signed.apk>
 ```
 
-- The keystore password lives at `/projects/.env.keystore-pass`, **outside the
-  repo** — never move it, or a copy of it, into the repo or commit it anywhere.
+- The keystore password lives in unraid-secretsman (`wallpanel/keystore_pass`;
+  the old `/projects/.env.keystore-pass` file was retired 2026-10-29). Use
+  `keytool -storepass:env KEYSTORE_PASS` the same way. Never put it in the repo
+  or on argv.
 - `apksigner sign` also emits a `<signed.apk>.idsig` sidecar file — this is a
   Play-specific artifact (APK Signature Scheme v4). **Do not attach it to
   releases**; only the signed `.apk` itself.
