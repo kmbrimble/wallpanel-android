@@ -53,6 +53,16 @@ wallpanel_probe_port() {
 }
 export -f wallpanel_probe_port
 
+# TCP-only pre-check (no adb call) that <ip>:<port> accepts connections. A tablet
+# reboot switches wireless debugging off, so 5555 is normally CLOSED; failing
+# here beats a long adb/scan timeout. Returns 1 with the recovery message on stderr.
+wallpanel_precheck_adb_port() {
+    local ip="${1:-$WALLPANEL_TABLET_IP}" port="${2:-5555}"
+    [[ -n "$(wallpanel_probe_port "$ip" "$port")" ]] && return 0
+    echo "[adb-device] wireless debugging is off on the tablet (likely after a reboot); re-enable it on the tablet, then retry ($ip:$port refused/unreachable)" >&2
+    return 1
+}
+
 # Prints a working "ip:port" serial to stdout and returns 0 on success.
 # Prints nothing to stdout and returns 1 on failure; diagnostics go to stderr
 # so callers can pass them straight through to their own log function.
@@ -60,6 +70,10 @@ wallpanel_resolve_adb_serial() {
     local ip="${1:-$WALLPANEL_TABLET_IP}"
     local t="$WALLPANEL_ADB_TIMEOUT"
     local pinned="$ip:5555"
+
+    # WALLPANEL_SKIP_PORT_PRECHECK=1 keeps the old behaviour: fall through to the
+    # wireless-debugging port scan when 5555 is closed.
+    [[ "${WALLPANEL_SKIP_PORT_PRECHECK:-0}" == 1 ]] || wallpanel_precheck_adb_port "$ip" 5555 || return 1
 
     timeout "$t" adb connect "$pinned" >/dev/null 2>&1
     if [[ "$(timeout "$t" adb -s "$pinned" get-state 2>/dev/null | tr -d '\r')" == "device" ]]; then

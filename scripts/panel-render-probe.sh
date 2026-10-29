@@ -45,8 +45,8 @@ mkdir -p "$DIR"
 SERIAL="${SMOKE_SERIAL:-}"
 if [[ -z "$SERIAL" ]]; then
     HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    SERIAL="$(bash "$HERE/adb-device.sh" 2>/dev/null | tail -1)"
-    SERIAL="${SERIAL:-192.168.0.52:5555}"
+    source "$HERE/adb-device.sh"
+    SERIAL="$(wallpanel_resolve_adb_serial)" || { echo "[$TAG] could not probe: no adb to the tablet"; exit 2; }
 fi
 
 capture() { # capture <destination>

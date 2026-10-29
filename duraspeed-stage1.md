@@ -1,6 +1,6 @@
 # DuraSpeed wedge — Stage 1 empirical findings (2026-09-02)
 
-Device: Lenovo tablet, `192.168.0.52:5555`. App under test: `xyz.wallpanel.app.kmb` (kmb.8).
+Device: Lenovo tablet (address: registry entry `wallpanel-tablet`; adb on 5555 was up during these trials but is NOT normally available — a reboot switches wireless debugging off, see CLAUDE.md "Deploy and verify"). App under test: `xyz.wallpanel.app.kmb` (kmb.8).
 Trigger flag: `settings put global setting.duraspeed.enabled 1`.
 Verdict columns: renderer `Start proc` logged; `ServiceRecord` bound state; render probe.
 

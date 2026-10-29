@@ -822,14 +822,17 @@ promoting.
   loudly whether the rollback itself restored rendering. It refuses to
   promote anything whose applicationId isn't exactly `xyz.wallpanel.app.kmb`.
 
-  The tablet is reachable over the LAN at `192.168.0.52:5555` (adb-over-TCP;
-  `adb connect 192.168.0.52:5555` first if it isn't already listed in
-  `adb devices`).
-
-  **Address resolution is port-scan based.** `scripts/adb-device.sh` tries
-  `<ip>:5555` first and, on failure, port-scans `30000-60999` (bounded parallel
-  probes via bash's `/dev/tcp`, ~14-23s for the full range), connects to the first
-  candidate that reports `device`, then re-pins 5555 so the fast path works again.
+  **adb is NOT normally available.** Port 5555 is closed by default (TCP connect
+  refused, checked 2026-10-30): a tablet reboot switches wireless debugging off and
+  nothing re-pins `tcpip 5555` afterwards. Current address: `/projects/homelab-access/bin/hl show wallpanel-tablet`
+  (registry entry `wallpanel-tablet`; its `notes` say TCP only, never adb/HTTP). To get adb
+  back, someone at the tablet must re-enable Settings > Developer options > Wireless
+  debugging, then `adb connect <address>:5555` (or let `adb-device.sh` re-pin it).
+  Every script that needs adb now runs a TCP-only pre-check first
+  (`wallpanel_precheck_adb_port` in `scripts/adb-device.sh`, via the resolver, and
+  `panel-render-probe.sh`) and exits non-zero with "wireless debugging is off on the
+  tablet (likely after a reboot); re-enable it on the tablet, then retry". Set
+  `WALLPANEL_SKIP_PORT_PRECHECK=1` to skip it and fall through to the port scan.
 
   **A reboot does NOT leave adb reachable on another port — it leaves adb off.**
   This file previously claimed a reboot re-assigns wireless debugging to a random

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### 2026-10-30 — adb scripts fail fast when the tablet's adb port is closed
+
+A reboot switches wireless debugging off, so `<ip>:5555` is normally closed. New
+`wallpanel_precheck_adb_port` (TCP connect only, in `scripts/adb-device.sh`) runs at the top of
+`wallpanel_resolve_adb_serial`, so `smoke-device.sh`, `promote.sh`, `smoke-renderer-crash.sh` and
+`logcat-capture.sh` stop with "wireless debugging is off on the tablet (likely after a reboot);
+re-enable it on the tablet, then retry" instead of a port scan / adb timeout.
+`WALLPANEL_SKIP_PORT_PRECHECK=1` restores the old scan fallback. `panel-render-probe.sh` previously
+*executed* `adb-device.sh` (which only defines functions), so it never resolved a serial and always
+used a hardcoded `192.168.0.52:5555`; it now sources it and exits 2 when adb is unreachable.
+CLAUDE.md and `duraspeed-stage1.md` now say adb is not normally available and point at the
+`wallpanel-tablet` registry entry. No app change, no version bump.
+
 ### 2026-10-23 — smoke-device.sh no longer refers to mDNS discovery
 
 `scripts/smoke-device.sh` still described `wallpanel_resolve_adb_serial` as falling back to mDNS
