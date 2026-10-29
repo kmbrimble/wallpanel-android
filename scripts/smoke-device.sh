@@ -55,7 +55,8 @@ APK="${1:-}"
 # --- device reachability: fail closed, never hang ---
 # SMOKE_SERIAL is a raw serial override (used to test the unreachable-device
 # path deterministically); anything else goes through the resilient resolver,
-# which falls back to mdns discovery + re-pinning port 5555 if the tablet
+# which falls back to a port scan of the wireless-debugging range + re-pinning
+# port 5555 if the tablet
 # rebooted and lost its tcpip pin.
 if [[ -n "${SMOKE_SERIAL:-}" ]]; then
     SERIAL="$SMOKE_SERIAL"
@@ -64,7 +65,7 @@ if [[ -n "${SMOKE_SERIAL:-}" ]]; then
     STATE=$(timeout "$ADB_TIMEOUT" adb -s "$SERIAL" get-state 2>/dev/null | tr -d '\r' || true)
     [[ "$STATE" == "device" ]] || die "device $SERIAL unreachable (get-state='$STATE')"
 else
-    SERIAL=$(wallpanel_resolve_adb_serial) || die "could not reach the tablet at $WALLPANEL_TABLET_IP (pinned port and mdns discovery both failed -- see [adb-device] messages above)"
+    SERIAL=$(wallpanel_resolve_adb_serial) || die "could not reach the tablet at $WALLPANEL_TABLET_IP (pinned port 5555 and the wireless-debugging port scan both failed -- see [adb-device] messages above)"
     log "Connected to $SERIAL"
 fi
 

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### 2026-10-23 — smoke-device.sh no longer refers to mDNS discovery
+
+`scripts/smoke-device.sh` still described `wallpanel_resolve_adb_serial` as falling back to mDNS
+discovery, and its unreachable-tablet error said "pinned port and mdns discovery both failed".
+`adb-device.sh` replaced that fallback with a port scan on 2026-08-30 (see that entry; mDNS must
+not be reinstated). The comment and the error message now say what actually happens. Text only,
+no behaviour change. Fixes #1.
+
 ### 2026-09-13 — kmb.17: re-enable Wireless Debugging after reboot
 
 Android resets the Android 11+ Wireless Debugging toggle
