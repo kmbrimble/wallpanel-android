@@ -52,7 +52,8 @@ All three are repo-scoped and advisory; the four items below are what this
 repository cannot tell them about itself.
 
 **Exposure — LAN-only, with an unauthenticated control surface on the LAN.**
-The panel is a Lenovo TB-J616F at `192.168.0.52` on the flat home LAN. It is
+The panel is a Lenovo TB-J616F on the flat home LAN (address: registry entry
+`wallpanel-tablet`, `/projects/homelab-access/bin/hl show wallpanel-tablet`). It is
 **not** in the Cloudflare tunnel ingress list, is behind no reverse proxy, and
 has no port forward — nothing outside the LAN can reach it. On the LAN it
 exposes:
@@ -73,7 +74,9 @@ exposes:
 - **MQTT**, enabled against a LAN broker. The `command` topic
   (`MqttUtils.TOPIC_COMMAND`) feeds the same `processCommand`, so it has
   identical reach, `eval` included.
-- **adb over TCP on 5555**, left enabled for the harness (`scripts/adb-device.sh`).
+- **adb over TCP on 5555** is NOT normally listening: a reboot switches wireless
+  debugging off, so it is only up after someone re-enables it on the tablet
+  (`scripts/adb-device.sh` pre-checks the port; see "Deploy and verify").
 
 **Modules that own data users rely on.** There is no database, no money, no
 quantities and no audit trail here — no Room, no SQLite, no file writes outside
@@ -120,7 +123,8 @@ any of them:
   `system_server`. `DuraSpeed.kt` exists only to switch it off; the thing it
   defends against is in neither this repo nor AOSP. ("Deploy and verify")
 - **A physical tablet reachable over adb-TCP** at `$WALLPANEL_TABLET_IP`
-  (default `192.168.0.52`) is what everything in `scripts/` and
+  (default from registry entry `wallpanel-tablet`; adb is only up while wireless
+  debugging is on) is what everything in `scripts/` and
   `logcat-capture.sh` talks to; `.claude/settings.json` starts the capture on
   every session.
 - **Hilt's root component is generated outside the KSP output tree**, into
@@ -836,7 +840,7 @@ promoting.
 
   **A reboot does NOT leave adb reachable on another port — it leaves adb off.**
   This file previously claimed a reboot re-assigns wireless debugging to a random
-  ephemeral port that the scan then recovers. That is **0 for 2** in practice
+  ephemeral port that the `adb-device.sh` port scan then recovers. That is **0 for 2** in practice
   (2026-08-30 and 2026-09-01): after both reboots the host answered on the network
   (`Connection refused`, not a timeout, on every port probed) but the full
   `30000-60999` scan found **no open port at all**, and a LAN-wide sweep for adb
@@ -844,7 +848,9 @@ promoting.
   reboot, not moved. Recovering it needs someone at the tablet:
   Settings > Developer options > Wireless debugging. Assume any reboot strands the
   harness until a human intervenes, and never build automation that depends on adb
-  surviving one. **Do not reinstate mDNS discovery** (`adb mdns services`): it
+  surviving one. Because of that, the TCP pre-check on 5555 now runs first and
+  fails fast, so the scan is skipped by default; it only runs with
+  `WALLPANEL_SKIP_PORT_PRECHECK=1`, and has never found a port after a reboot. **Do not reinstate mDNS discovery** (`adb mdns services`): it
   relies on multicast, which does not cross this container's Docker bridge, so
   it always returns zero services here — it failed closed, but could never
   succeed, which made it dead code that read as functional. `SMOKE_SERIAL`
