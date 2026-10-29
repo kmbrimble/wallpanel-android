@@ -645,10 +645,11 @@ hl exec --secret KEYSTORE_PASS=wallpanel/keystore_pass -- \
 apksigner verify --print-certs --verbose <signed.apk>
 ```
 
-- The keystore password lives in unraid-secretsman (`wallpanel/keystore_pass`;
-  the old `/projects/.env.keystore-pass` file was retired 2026-10-29). Use
-  `keytool -storepass:env KEYSTORE_PASS` the same way. Never put it in the repo
-  or on argv.
+- The keystore password lives only in unraid-secretsman as
+  `wallpanel/keystore_pass`; no file holds it. Inject it with
+  `hl exec --secret KEYSTORE_PASS=wallpanel/keystore_pass -- apksigner sign ... --ks-pass env:KEYSTORE_PASS`
+  (as above), and use `keytool -storepass:env KEYSTORE_PASS` the same way. Never put
+  it in the repo, in a file, or on argv.
 - `apksigner sign` also emits a `<signed.apk>.idsig` sidecar file — this is a
   Play-specific artifact (APK Signature Scheme v4). **Do not attach it to
   releases**; only the signed `.apk` itself.
